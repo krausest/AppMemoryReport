@@ -4,6 +4,8 @@ How much memory does Firefox *really* use? Or VS Code, Mail, or Safari?
 
 A macOS command-line tool and a small SwiftUI app that answer this per app. Each app's figure includes all its helper, renderer, GPU and XPC processes, and memory those processes share is counted only once.
 
+<img src="docs/screenshot.png" width="672" alt="App Memory Report window listing apps with their process count and memory, sorted by memory">
+
 ## Motivation
 
 Modern apps are not one process. A browser with a dozen tabs easily runs 20–50 processes: content/renderer processes, a GPU process, network and utility helpers, and XPC services launched on its behalf. Activity Monitor lists them as separate rows, often with names like "Isolated Web Content" or "Helper (Renderer)" that don't make it obvious which app they belong to.
@@ -70,7 +72,7 @@ snapshot processes → attribute to apps → measure each group → table
 
 **Grouping** (`Grouping.swift`): each process follows its responsible PID, or otherwise its parent, up to a *root*. Roots inside the same `.app` bundle are merged by the **outermost** bundle, so nested helper apps (`Firefox.app/Contents/MacOS/plugin-container.app`, Electron helpers, …) count toward their main app. Each group is named after the bundle's display name. Processes outside any bundle each form a row named after their executable. While Safari runs, its background agents (sync, Safe Browsing, history) are added to it.
 
-**Measuring** (`Footprint.swift`): each group's PIDs are passed to a single `/usr/bin/footprint` run. Its *total footprint* is the group's physical memory with shared pages counted once. Footprint is the same metric Activity Monitor calls "Memory": dirty memory, plus compressed and swapped memory. Single-process groups skip footprint and read the kernel value (`ri_phys_footprint`) directly. If footprint fails, or a process exits in the meantime and footprint's report includes processes that weren't requested, the row falls back to the plain per-process sum and is marked `*`. The groups are measured in parallel.
+**Measuring** (`Footprint.swift`): each group's PIDs are passed to a single `/usr/bin/footprint` run. Its *total footprint* is the group's physical memory with shared pages counted once. Footprint is the same metric Activity Monitor calls "Memory": dirty memory, plus compressed and swapped memory. The kernel sometimes charges a process for memory that footprint's region analysis counts as clean, e.g. OrbStack's helper for gigabytes of its mapped VM disk image. That difference is added per process, so the figures agree with Activity Monitor's, except that shared memory is counted once. Single-process groups skip footprint and read the kernel value (`ri_phys_footprint`) directly. If footprint fails, or a process exits in the meantime and footprint's report includes processes that weren't requested, the row falls back to the plain per-process sum and is marked `*`. The groups are measured in parallel.
 
 **Cost:** footprint is not cheap. Measuring all processes together for the total takes ~8 s and ~50 CPU-seconds on a busy machine. That's why the GUI skips the total and, by default, measures only the top candidates. Groups are first ranked by the cheap per-process sum, then footprint runs for the top 40, and the 30 largest are shown. A refresh then costs ~2 s and ~14 CPU-seconds.
 

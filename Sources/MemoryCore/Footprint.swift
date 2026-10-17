@@ -10,14 +10,18 @@ public struct Measurement: Sendable {
 
 /// Measures groups of PIDs with `/usr/bin/footprint`.
 ///
-/// `footprint` reports the same per-process value as `ri_phys_footprint`, but its
-/// "total footprint" counts memory shared between the given processes only once.
+/// `footprint`'s "total footprint" counts memory shared between the given processes only
+/// once. It sums the memory regions it can see, though, while the kernel's
+/// `phys_footprint` (`ri_phys_footprint`, Activity Monitor's "Memory") also charges memory
+/// that doesn't show up as dirty there. For example, OrbStack's helper maps its VM disk
+/// image, and gigabytes of it count as clean file pages for `footprint`, but as footprint
+/// for the kernel. That excess is added per process, so the result matches `phys_footprint`.
 enum Footprint {
     private static let executable = URL(fileURLWithPath: "/usr/bin/footprint")
 
     /// Runs `footprint` for `pids` and waits for it, or falls back to the rusage-based sum.
     static func measure(_ pids: [pid_t], qos: QualityOfService = .default) -> Measurement {
-        // Nothing is shared within a single process, so the kernel value is exact.
+        // Nothing is shared within a single process, so the kernel value is all we need.
         if pids.count == 1 {
             let bytes = ProcessTable.physFootprint(of: pids[0])
             return Measurement(bytes: bytes ?? 0, processCount: bytes == nil ? 0 : 1, deduplicated: true)
@@ -48,11 +52,16 @@ enum Footprint {
               let total = (json["total footprint"] as? NSNumber)?.uint64Value
         else { return nil }
 
+        // Per PID: the kernel's phys_footprint, and how much it exceeds footprint's own value.
         var perProcess: [pid_t: UInt64] = [:]
+        var excess: [pid_t: UInt64] = [:]
         for entry in processes {
             if let pid = (entry["pid"] as? NSNumber)?.int32Value,
                let bytes = (entry["footprint"] as? NSNumber)?.uint64Value {
-                perProcess[pid] = bytes
+                let auxiliary = entry["auxiliary"] as? [String: Any]
+                let phys = (auxiliary?["phys_footprint"] as? NSNumber)?.uint64Value ?? bytes
+                perProcess[pid] = max(phys, bytes)
+                excess[pid] = phys > bytes ? phys - bytes : 0
             }
         }
 
@@ -64,7 +73,8 @@ enum Footprint {
             let own = perProcess.filter { requested.contains($0.key) }
             return Measurement(bytes: own.values.reduce(0, +), processCount: own.count, deduplicated: false)
         }
-        return Measurement(bytes: total, processCount: perProcess.count, deduplicated: true)
+        return Measurement(bytes: total + excess.values.reduce(0, +), processCount: perProcess.count,
+                           deduplicated: true)
     }
 
     private static func rusageSum(of pids: [pid_t]) -> Measurement {
