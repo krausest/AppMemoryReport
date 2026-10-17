@@ -1,0 +1,30 @@
+## Overview
+
+a macOS-only Swift command-line tool plus a SwiftUI GUI that reports the total memory used by each proecess, including all their helper/XPC/renderer/sub processes. Both the CLI and the GUI are localized (English source strings, German translation) and follow the system language.
+
+The goal is to sum the memory a process like a browser actually occupies. This includes subprocesses but respectes shared memory.
+
+## Commands
+
+```sh
+swift build                     # debug build
+swift build -c release          # release build
+swift run app-memory-report     # build and run the CLI
+swift run AppMemoryReport       # build and run the GUI (no .app bundle)
+scripts/make-app.sh             # release build of the GUI as AppMemoryReport.app (ad-hoc signed)
+```
+
+The app icon (a RAM module) is drawn with CoreGraphics in `scripts/make-icon.swift`; `make-app.sh` renders it into an iconset and converts it with `iconutil` to `AppIcon.icns` on every build.
+## Architecture
+
+Three SwiftPM targets: `MemoryCore` (library with everything below), `app-memory-report` (CLI, `main.swift` only prints) and `AppMemoryReport` (SwiftUI GUI).
+
+The pipeline is `MemoryReport.measure` in `MemoryCore/MemoryReport.swift`: snapshot processes → group them by root process / app → measure each group, plus all PIDs together for the total if requested → unsorted `AppUsage` rows. The CLI requests the total and prints a table. Without root only the current user's processes are shown (footprint can't read others); run with `sudo` to include all users.
+
+- **`ProcessTable.swift`**: snapshots every visible PID via libproc (`proc_listallpids`, `proc_pidinfo`, `proc_pidpath`). It also calls the private libSystem function `responsibility_get_pid_responsible_for_pid` (bound via `@_silgen_name`) to get the "responsible" PID, the same attribution Activity Monitor uses (e.g. Safari is responsible for its WebKit XPC services).
+- **`Grouping.swift`**: returns `ProcessGroup`s (name, PIDs, outermost `.app` path for icons). Each process is attributed to a *root*. The lookup follows the responsible PID if it's a different process, otherwise the parent (if `ppid > 1`), until neither applies. It runs on the unfiltered table, so a chain can pass through other users' processes (e.g. Terminal → `login` → `zsh`). Roots whose executable sits in an `.app` bundle are merged per **outermost** bundle ID (nested helper apps count toward their parent) and named after the bundle's display name, localized for the user's languages via `Bundle.localizedString(forKey:…localizations:)` (macOS 15.4+, soft hyphens removed). Other roots are one row each, named after the executable, with `[pid]` / `(bundleID)` appended when names collide. Special case: while Safari runs, non-bundle roots whose path contains "Safari" (sync, safe browsing and history agents) are added to Safari. The UID filter is applied only after attribution. The tool itself is not excluded, so the GUI shows its own memory (its localized display name, "App Memory Report" / "Speicherverbrauch", when run as an .app).
+- **`Footprint.swift`**: `Footprint.measure` runs `/usr/bin/footprint` for one group, writing JSON to a temp file. footprint's `total footprint` counts memory shared between the processes in a group only once. Groups with a single process skip footprint and use `ri_phys_footprint` directly, which is the same value. `MemoryReport` runs all measurements via `parallelMap` (`Parallel.swift`, by default at most one per CPU core). Index 0 is the all-PIDs run behind the total ("Total"/"Gesamt"), so rows can add up to more than the total. A row (or the total) is marked `*` when the deduplicated total couldn't be used, and it then falls back to a plain sum of per-process values. This happens in two cases:
+  - footprint failed to run, so the per-process `ri_phys_footprint` from `proc_pid_rusage` is summed instead.
+  - footprint's report contains PIDs that weren't requested. A requested PID that exited in the meantime gets treated as a process *name* pattern and can pull in unrelated processes. Only the requested PIDs' values are summed.
+- **GUI** (`AppMemoryReport/`): `MemoryModel` (`@Observable`, main actor) measures without the total (by far the slowest run) and, with "Top 30 only" (default), passes `limit: 30` to `MemoryReport.measure`, which ranks groups by the cheap plain sum of `ri_phys_footprint` and runs footprint only for the top 40 candidates. It uses at most 4 parallel `footprint`s at `.utility` QoS. `runAutoRefresh` polls once per second and starts a measurement once `interval` (default 30 s; a top-30 refresh costs ~14 CPU-s) has passed since the previous one *finished*, only while a window is visible (the first measurement always runs). `ContentView` shows a sortable `Table` (initially by memory, descending) with search, an interval picker and a status bar showing the measurement duration. Only the current user's processes.
+- **Localization**: each executable target has its own `Localizable.xcstrings` (source language `en`, `defaultLocalization` in `Package.swift`). SwiftPM doesn't extract strings, so new keys must be added to the catalog by hand. Keys use the `%lld`/`%@` form of the interpolation, and code calls a `localized("…")` helper instead of SwiftUI's implicit lookup. Foundation picks a resource bundle's language from the *main* bundle's localizations, which the CLI and `swift run` don't have, so they would always get English. `preferredLocalization(of:)` (`MemoryCore/Localization.swift`) therefore picks the `.lproj` folder via `Locale.preferredLanguages` itself. The CLI looks up its resource bundle next to the executable without `Bundle.module`, which would crash if the bundle were missing; English keys are shown then. In the GUI, with `swift run` the strings come from `Bundle.module`. `make-app.sh` instead copies the compiled `.lproj` folders, plus `InfoPlist.strings` with the localized app name, into the app's own `Contents/Resources`, and `localized` then uses `Bundle.main`. That way AppKit's standard menus are localized too. `formatBytes` uses the user's decimal separator.
