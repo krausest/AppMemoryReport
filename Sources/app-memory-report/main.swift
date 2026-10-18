@@ -40,10 +40,10 @@ for row in results {
 }
 print(String(repeating: "-", count: header.count))
 print(pad(localized("Total"), nameWidth)
-      + pad(String(results.map(\.processCount).reduce(0, +)), 10, right: true)
+      + pad(String(total.processCount), 10, right: true)
       + pad(formatBytes(total.bytes), 11, right: true) + (total.deduplicated ? "" : "*"))
 
 print("\n" + localized("Memory shared by several rows counts in each of them, but only once in “Total”."))
 if !total.deduplicated || results.contains(where: { !$0.deduplicated }) {
-    print(localized("* footprint unavailable: sum of the individual footprints, shared memory may be counted more than once."))
+    print(localized("* Plain sum of the individual footprints (footprint unavailable, or skipped because hardly any memory can be shared): shared memory may be counted more than once."))
 }

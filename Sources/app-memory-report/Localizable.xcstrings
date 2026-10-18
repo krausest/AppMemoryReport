@@ -1,12 +1,12 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
-    "* footprint unavailable: sum of the individual footprints, shared memory may be counted more than once." : {
+    "* Plain sum of the individual footprints (footprint unavailable, or skipped because hardly any memory can be shared): shared memory may be counted more than once." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "* footprint nicht verfügbar: Summe der Einzel-Footprints, Shared Memory ggf. mehrfach gezählt."
+            "value" : "* Einfache Summe der Einzel-Footprints (footprint nicht verfügbar oder übersprungen, weil kaum Speicher geteilt sein kann): Shared Memory ggf. mehrfach gezählt."
           }
         }
       }

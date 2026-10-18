@@ -31,15 +31,17 @@ struct ContentView: View {
             .width(min: 60, ideal: 70, max: 90)
             TableColumn(localized("Memory"), value: \.bytes) { row in
                 HStack(spacing: 1) {
-                    Text(formatBytes(row.bytes))
+                    Text((row.preliminary ? "≈ " : "") + formatBytes(row.bytes))
                         .monospacedDigit()
+                        .foregroundStyle(row.preliminary ? .secondary : .primary)
                     Text("*")
-                        .opacity(row.deduplicated ? 0 : 1)
-                        .help(localized("footprint unavailable: sum of the individual footprints, shared memory may be counted more than once."))
+                        .opacity(row.deduplicated || row.preliminary ? 0 : 1)
+                        .help(localized("Plain sum of the individual footprints (footprint unavailable, or skipped because hardly any memory can be shared): shared memory may be counted more than once."))
                 }
                 .frame(maxWidth: .infinity, alignment: .trailing)
+                .help(row.preliminary ? localized("Preliminary: sum of the individual footprints, still being measured") : "")
             }
-            .width(min: 80, ideal: 90, max: 120)
+            .width(min: 90, ideal: 105, max: 140)
         }
         .onChange(of: model.sortOrder) { model.sortRows() }
         .searchable(text: $search, placement: .toolbar, prompt: localized("Search"))

@@ -17,5 +17,6 @@ let package = Package(
             dependencies: ["MemoryCore"],
             resources: [.process("Localizable.xcstrings")]
         ),
+        .testTarget(name: "MemoryCoreTests", dependencies: ["MemoryCore"]),
     ]
 )

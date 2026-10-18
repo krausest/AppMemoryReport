@@ -26,6 +26,11 @@ final class MemoryModel {
     private var lastFinished: ContinuousClock.Instant?
     /// `topOnly` of the shown rows; a mismatch triggers a new measurement.
     private var rowsTopOnly: Bool?
+    /// Shared memory per group from the previous measurement, so unchanged groups skip footprint.
+    private var cache = FootprintCache()
+    /// Number of the measurement whose progress updates are applied; nil when none runs.
+    private var liveRun: Int?
+    private var runCount = 0
 
     func refresh() async {
         guard !isMeasuring else { return }
@@ -34,19 +39,42 @@ final class MemoryModel {
 
         let start = ContinuousClock.now
         let topOnly = topOnly
+        let cache = cache
+        runCount += 1
+        let run = runCount
+        liveRun = run
         // footprint is CPU-heavy, so run few of them at low priority. No total: it is
         // the slowest measurement by far and not needed to compare apps.
         let report = await Task.detached(priority: .utility) {
             MemoryReport.measure(includeAllUsers: false, includeTotal: false,
                                  limit: topOnly ? Self.topCount : nil,
-                                 maxConcurrency: 4, qos: .utility)
+                                 maxConcurrency: 4, qos: .utility, cache: cache) { updates in
+                Task { @MainActor in self.apply(updates, run: run) }
+            }
         }.value
+        liveRun = nil
+        self.cache = report.cache
         lastFinished = .now
         lastDuration = lastFinished! - start
         lastUpdate = .now
         rowsTopOnly = topOnly
         groupCount = report.groupCount
         rows = report.rows.sorted(using: sortOrder)
+    }
+
+    /// Shows rows while a measurement runs. Preliminary values only fill in rows that
+    /// aren't shown yet, so a refresh never replaces a measured value with a rough one.
+    private func apply(_ updates: [AppUsage], run: Int) {
+        guard run == liveRun else { return }
+        let indices = Dictionary(rows.enumerated().map { ($1.name, $0) }, uniquingKeysWith: { a, _ in a })
+        for update in updates {
+            if let index = indices[update.name] {
+                if !update.preliminary { rows[index] = update }
+            } else {
+                rows.append(update)
+            }
+        }
+        rows.sort(using: sortOrder)
     }
 
     func sortRows() {

@@ -19,18 +19,26 @@ public struct Measurement: Sendable {
 enum Footprint {
     private static let executable = URL(fileURLWithPath: "/usr/bin/footprint")
 
-    /// Runs `footprint` for `pids` and waits for it, or falls back to the rusage-based sum.
-    static func measure(_ pids: [pid_t], qos: QualityOfService = .default) -> Measurement {
+    /// Measures the processes in `phys` (PID → `ri_phys_footprint`; exited processes are
+    /// left out) with `footprint`, or falls back to the plain sum.
+    static func measure(_ phys: [pid_t: UInt64], qos: QualityOfService = .default) -> Measurement {
+        let sum = phys.values.reduce(0, +)
         // Nothing is shared within a single process, so the kernel value is all we need.
-        if pids.count == 1 {
-            let bytes = ProcessTable.physFootprint(of: pids[0])
-            return Measurement(bytes: bytes ?? 0, processCount: bytes == nil ? 0 : 1, deduplicated: true)
+        if phys.count <= 1 {
+            return Measurement(bytes: sum, processCount: phys.count, deduplicated: true)
         }
+        // At most everything but the largest process could be shared. If that is small,
+        // running footprint isn't worth it; the row is marked as not deduplicated.
+        if sum - phys.values.max()! <= max(1 << 20, sum / 100) {
+            return Measurement(bytes: sum, processCount: phys.count, deduplicated: false)
+        }
+        let plainSum = Measurement(bytes: sum, processCount: phys.count, deduplicated: false)
 
         let jsonURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("app-memory-report-\(UUID().uuidString).json")
         defer { try? FileManager.default.removeItem(at: jsonURL) }
 
+        let pids = phys.keys.sorted()
         let process = Process()
         process.executableURL = executable
         process.arguments = ["--noCategories", "-f", "bytes", "-j", jsonURL.path]
@@ -38,16 +46,15 @@ enum Footprint {
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
         process.qualityOfService = qos
-        guard (try? process.run()) != nil else { return rusageSum(of: pids) }
+        guard (try? process.run()) != nil else { return plainSum }
         process.waitUntilExit()
 
-        guard process.terminationStatus == 0 else { return rusageSum(of: pids) }
-        return parseReport(at: jsonURL, requested: pids) ?? rusageSum(of: pids)
+        guard process.terminationStatus == 0, let data = try? Data(contentsOf: jsonURL) else { return plainSum }
+        return parseReport(data, requested: pids) ?? plainSum
     }
 
-    private static func parseReport(at jsonURL: URL, requested pids: [pid_t]) -> Measurement? {
-        guard let data = try? Data(contentsOf: jsonURL),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+    static func parseReport(_ data: Data, requested pids: [pid_t]) -> Measurement? {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let processes = json["processes"] as? [[String: Any]],
               let total = (json["total footprint"] as? NSNumber)?.uint64Value
         else { return nil }
@@ -60,7 +67,7 @@ enum Footprint {
                let bytes = (entry["footprint"] as? NSNumber)?.uint64Value {
                 let auxiliary = entry["auxiliary"] as? [String: Any]
                 let phys = (auxiliary?["phys_footprint"] as? NSNumber)?.uint64Value ?? bytes
-                perProcess[pid] = max(phys, bytes)
+                perProcess[pid] = phys
                 excess[pid] = phys > bytes ? phys - bytes : 0
             }
         }
@@ -73,12 +80,9 @@ enum Footprint {
             let own = perProcess.filter { requested.contains($0.key) }
             return Measurement(bytes: own.values.reduce(0, +), processCount: own.count, deduplicated: false)
         }
-        return Measurement(bytes: total + excess.values.reduce(0, +), processCount: perProcess.count,
-                           deduplicated: true)
-    }
-
-    private static func rusageSum(of pids: [pid_t]) -> Measurement {
-        let values = pids.compactMap(ProcessTable.physFootprint(of:))
-        return Measurement(bytes: values.reduce(0, +), processCount: values.count, deduplicated: false)
+        // The excess isn't deduplicated, so cap the result at the plain sum. That also
+        // guarantees a group never measures more than the sum it was ranked by.
+        let bytes = min(total + excess.values.reduce(0, +), perProcess.values.reduce(0, +))
+        return Measurement(bytes: bytes, processCount: perProcess.count, deduplicated: true)
     }
 }
