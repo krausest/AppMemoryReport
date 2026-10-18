@@ -19,7 +19,7 @@ You might be tempted to just add up the column. Don't: helper processes share me
 
 ## So "I" wrote a tool
 
-The quotation marks are doing honest work here, as an AI did a good share of the typing (Fun fact: I asked the AI to polish this text, and apparently, it felt it deserved way more credit. That previous sentence was added by the AI itself.). [AppMemoryReport](https://github.com/krausest/AppMemoryReport) groups every helper, renderer and XPC service under the app that is responsible for it, using the same "responsible process" relation Activity Monitor uses internally. It then measures each app's processes *together* with Apple's `footprint` tool, so memory they share is counted only once. The metric is physical footprint, the same thing Activity Monitor calls "Memory", just summed correctly. The [README](../README.md) has the gory details.
+The quotation marks are doing honest work here, as an AI did a good share of the typing (Fun fact: I asked the AI to polish this text, and apparently, it felt it deserved way more credit. That previous sentence was added by the AI itself.). [AppMemoryReport](https://github.com/krausest/AppMemoryReport) groups every helper, renderer and XPC service under the app that is responsible for it, using the same "responsible process" relation Activity Monitor uses internally. It then measures each app's processes *together* with Apple's `footprint` tool, so memory they share is counted only once. The metric is physical footprint, the same thing Activity Monitor calls "Memory", just summed correctly. The [README](https://github.com/krausest/AppMemoryReport#readme) has the gory details.
 
 ![AppMemoryReport](screenshot.png)
 

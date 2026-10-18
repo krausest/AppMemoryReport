@@ -4,6 +4,8 @@ How much memory does Firefox *really* use? Or VS Code, Mail, or Safari?
 
 A macOS command-line tool and a small SwiftUI app that answer this per app. Each app's figure includes all its helper, renderer, GPU and XPC processes, and memory those processes share is counted only once.
 
+Read the story behind it: [25 Tabs, Four Browsers, One Sofa](https://krausest.github.io/AppMemoryReport/BrowserMemory.html), a memory comparison of Chrome, Firefox, Brave and Safari.
+
 <img src="docs/screenshot.png" width="672" alt="App Memory Report window listing apps with their process count and memory, sorted by memory">
 
 ## Motivation
