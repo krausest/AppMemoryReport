@@ -11,7 +11,7 @@ Activity Monitor answers that question roughly the way a phone book answers "who
 - **Firefox** is spread across Firefox itself and a long list of *FirefoxCP Isolated Web Content*, *Utility Process*, *Web Content* and *WebExtensions* processes.
 - **Brave** brings Brave plus a whole crowd of *Brave Browser Helper* and *Helper (Renderer)* processes.
 
-  ![Brave processes in Activity Monitor](brave.png)
+  <img alt="Brave processes in Activity Monitor" src="brave.png" width="474"/>
 
 - **Safari** lists your open URLs next to a collection of Safari and WebKit processes. That's charmingly honest, but it doesn't add up to a total.
 
@@ -21,7 +21,7 @@ You might be tempted to just add up the column. Don't: helper processes share me
 
 The quotation marks are doing honest work here, as an AI did a good share of the typing (Fun fact: I asked the AI to polish this text, and apparently, it felt it deserved way more credit. That previous sentence was added by the AI itself.). [AppMemoryReport](https://github.com/krausest/AppMemoryReport) groups every helper, renderer and XPC service under the app that is responsible for it, using the same "responsible process" relation Activity Monitor uses internally. It then measures each app's processes *together* with Apple's `footprint` tool, so memory they share is counted only once. The metric is physical footprint, the same thing Activity Monitor calls "Memory", just summed correctly. The [README](https://github.com/krausest/AppMemoryReport#readme) has the gory details.
 
-![AppMemoryReport](screenshot.png)
+  <img alt="AppMemoryReport" src="screenshot.png" width="490"/>
 
 ## Round 1: no extensions
 
