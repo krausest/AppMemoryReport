@@ -2,8 +2,8 @@ import Darwin
 import Foundation
 
 private enum GroupKey: Hashable {
-    /// All roots inside the same outermost `.app` bundle.
-    case app(bundleID: String)
+    /// All roots of one user inside the same outermost `.app` bundle.
+    case app(bundleID: String, uid: uid_t)
     /// A single root process outside any app bundle.
     case process(pid_t)
 }
@@ -13,6 +13,8 @@ public struct ProcessGroup: Sendable {
     /// Display name, unique among the groups of one `groupProcesses` call.
     public let name: String
     public let pids: [pid_t]
+    /// Owner of the group's root process(es), which may differ from some of its processes' owners.
+    public let uid: uid_t
     /// Outermost `.app` bundle of the group, nil for processes outside any bundle.
     public let appPath: String?
 }
@@ -36,8 +38,8 @@ private let satelliteRules: [(bundleID: String, matches: @Sendable (String) -> B
 
 /// Groups PIDs into rows with a unique display name.
 ///
-/// Every process is attributed to a root (see `Attribution.resolveRoot`). Roots inside
-/// the same `.app` bundle form one group. Some apps additionally get their
+/// Every process is attributed to a root (see `Attribution.resolveRoot`). Roots of the same
+/// user inside the same `.app` bundle form one group. Some apps additionally get their
 /// self-responsible background processes while they run (`satelliteRules`).
 ///
 /// Attribution uses the whole table; afterwards only processes of `uid` (or of all users,
@@ -58,14 +60,18 @@ func groupProcesses(
     var rootKeys: [pid_t: GroupKey] = [:]
     var names: [GroupKey: String] = [:]
     var appPaths: [GroupKey: String] = [:]
+    var owners: [GroupKey: uid_t] = [:]
     for root in Set(roots.values) {
         guard let entry = table[root] else { continue }
         if let app = appBundle(entry.path) {
-            rootKeys[root] = .app(bundleID: app.bundleID)
-            names[.app(bundleID: app.bundleID)] = app.name
-            appPaths[.app(bundleID: app.bundleID)] = app.path
+            let key = GroupKey.app(bundleID: app.bundleID, uid: entry.uid)
+            rootKeys[root] = key
+            names[key] = app.name
+            appPaths[key] = app.path
+            owners[key] = entry.uid
         } else {
             rootKeys[root] = .process(root)
+            owners[.process(root)] = entry.uid
             let command = attribution.isTerminalCommand(root) ? arguments(root).flatMap(commandName) : nil
             names[.process(root)] = command
                 ?? (entry.path.isEmpty ? "PID \(root)" : entry.executableName)
@@ -73,10 +79,12 @@ func groupProcesses(
     }
 
     for (root, key) in rootKeys {
-        guard case .process = key, let path = table[root]?.path,
-              let rule = satelliteRules.first(where: { names[.app(bundleID: $0.bundleID)] != nil && $0.matches(path) })
+        guard case .process = key, let entry = table[root],
+              let rule = satelliteRules.first(where: {
+                  names[.app(bundleID: $0.bundleID, uid: entry.uid)] != nil && $0.matches(entry.path)
+              })
         else { continue }
-        rootKeys[root] = .app(bundleID: rule.bundleID)
+        rootKeys[root] = .app(bundleID: rule.bundleID, uid: entry.uid)
     }
 
     var groups: [GroupKey: [pid_t]] = [:]
@@ -86,20 +94,22 @@ func groupProcesses(
         }
     }
 
-    // Disambiguate rows that would share a name, e.g. two unrelated `node` daemons.
-    var nameCounts: [String: Int] = [:]
+    // Disambiguate rows of one user that would share a name, e.g. two unrelated `node` daemons.
+    // Rows of different users are told apart by their owner.
+    struct NameKey: Hashable { let name: String, uid: uid_t }
+    var nameCounts: [NameKey: Int] = [:]
     for key in groups.keys {
-        nameCounts[names[key]!, default: 0] += 1
+        nameCounts[NameKey(name: names[key]!, uid: owners[key]!), default: 0] += 1
     }
     return groups.map { key, pids in
         var name = names[key]!
-        if nameCounts[name]! > 1 {
+        if nameCounts[NameKey(name: name, uid: owners[key]!)]! > 1 {
             switch key {
-            case .app(let bundleID): name += " (\(bundleID))"
+            case .app(let bundleID, _): name += " (\(bundleID))"
             case .process(let pid): name += " [\(pid)]"
             }
         }
-        return ProcessGroup(name: name, pids: pids, appPath: appPaths[key])
+        return ProcessGroup(name: name, pids: pids, uid: owners[key]!, appPath: appPaths[key])
     }
 }
 

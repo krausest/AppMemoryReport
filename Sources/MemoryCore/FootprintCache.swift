@@ -28,15 +28,17 @@ public struct FootprintCache: Sendable {
         let sum = phys.values.reduce(0, +)
         let change = Double(sum > entry.plainSum ? sum - entry.plainSum : entry.plainSum - sum)
         guard change <= Double(entry.plainSum) * Self.tolerance else { return nil }
-        return Measurement(bytes: sum - min(entry.shared, sum), processCount: phys.count, deduplicated: true)
+        return Measurement(bytes: sum - min(entry.shared, sum), processCount: phys.count, deduplicated: true,
+                           plainSum: sum)
     }
 
     /// Remembers a `footprint` result; anything else (a plain sum) isn't worth caching.
+    /// The shared amount comes from the measurement's own snapshot; the tolerance check
+    /// compares against `phys`, the values the next lookup will see.
     mutating func store(_ phys: [pid_t: UInt64], _ measurement: Measurement, at time: ContinuousClock.Instant) {
         guard measurement.deduplicated, phys.count > 1 else { return }
-        let sum = phys.values.reduce(0, +)
-        entries[phys.keys.sorted()] = Entry(plainSum: sum, shared: sum - min(measurement.bytes, sum),
-                                            measuredAt: time)
+        let shared = measurement.plainSum - min(measurement.bytes, measurement.plainSum)
+        entries[phys.keys.sorted()] = Entry(plainSum: phys.values.reduce(0, +), shared: shared, measuredAt: time)
     }
 
     /// Keeps a reused entry (unchanged) for the next run.

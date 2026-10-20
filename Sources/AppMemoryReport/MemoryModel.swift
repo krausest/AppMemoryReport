@@ -26,6 +26,14 @@ final class MemoryModel {
     private var lastFinished: ContinuousClock.Instant?
     /// `topOnly` of the shown rows; a mismatch triggers a new measurement.
     private var rowsTopOnly: Bool?
+    /// Connection to the helper running as root while all users' processes are shown.
+    private var helper: HelperConnection?
+    var showsAllUsers: Bool { helper != nil }
+    /// `showsAllUsers` of the shown rows; a mismatch triggers a new measurement.
+    private var rowsAllUsers: Bool?
+    private(set) var isAuthenticating = false
+    /// Shown as an alert, reset when it is dismissed.
+    var errorMessage: String?
     /// Shared memory per group from the previous measurement, so unchanged groups skip footprint.
     private var cache = FootprintCache()
     /// Number of the measurement whose progress updates are applied; nil when none runs.
@@ -39,36 +47,94 @@ final class MemoryModel {
 
         let start = ContinuousClock.now
         let topOnly = topOnly
-        let cache = cache
+        let limit = topOnly ? Self.topCount : nil
+        let helper = helper
         runCount += 1
         let run = runCount
         liveRun = run
-        // footprint is CPU-heavy, so run few of them at low priority. No total: it is
-        // the slowest measurement by far and not needed to compare apps.
-        let report = await Task.detached(priority: .utility) {
-            MemoryReport.measure(includeAllUsers: false, includeTotal: false,
-                                 limit: topOnly ? Self.topCount : nil,
-                                 maxConcurrency: 4, qos: .utility, cache: cache) { updates in
-                Task { @MainActor in self.apply(updates, run: run) }
+        let progress: @Sendable ([AppUsage]) -> Void = { updates in
+            Task { @MainActor in self.apply(updates, run: run) }
+        }
+        let result: (rows: [AppUsage], groupCount: Int)
+        if let helper {
+            do {
+                result = try await Task.detached(priority: .utility) {
+                    try helper.measure(limit: limit, progress: progress)
+                }.value
+            } catch {
+                liveRun = nil
+                if self.helper === helper {
+                    self.helper = nil
+                    clearRows()
+                    errorMessage = localized("The helper process ended.")
+                }
+                return
             }
-        }.value
+        } else {
+            // footprint is CPU-heavy, so run few of them at low priority. No total: it is
+            // the slowest measurement by far and not needed to compare apps.
+            let cache = cache
+            let report = await Task.detached(priority: .utility) {
+                MemoryReport.measure(includeAllUsers: false, includeTotal: false, limit: limit,
+                                     maxConcurrency: 4, qos: .utility, cache: cache, progress: progress)
+            }.value
+            self.cache = report.cache
+            result = (report.rows, report.groupCount)
+        }
+        // Switched between own and all users' processes meanwhile: the next refresh measures again.
+        guard liveRun == run else { return }
         liveRun = nil
-        self.cache = report.cache
         lastFinished = .now
         lastDuration = lastFinished! - start
         lastUpdate = .now
         rowsTopOnly = topOnly
-        groupCount = report.groupCount
-        rows = report.rows.sorted(using: sortOrder)
+        rowsAllUsers = helper != nil
+        groupCount = result.groupCount
+        rows = result.rows.sorted(using: sortOrder)
+    }
+
+    /// Shows all users' processes (starting the root helper, which asks for an administrator
+    /// password) or only the current user's (ending the helper).
+    func setShowsAllUsers(_ enabled: Bool) async {
+        guard enabled != showsAllUsers, !isAuthenticating else { return }
+        if enabled {
+            isAuthenticating = true
+            defer { isAuthenticating = false }
+            do {
+                helper = try await PrivilegedHelper.launch()
+            } catch PrivilegedHelper.LaunchError.cancelled {
+                return
+            } catch PrivilegedHelper.LaunchError.notFound(let path) {
+                errorMessage = localized("The helper \(path) wasn't found. Build it with “swift build”.")
+                return
+            } catch PrivilegedHelper.LaunchError.failed(let message) {
+                errorMessage = message
+                return
+            } catch {
+                errorMessage = String(describing: error)
+                return
+            }
+        } else {
+            helper = nil
+        }
+        clearRows()
+        await refresh()
+    }
+
+    /// Drops rows of the other mode (own / all users), including those of a running measurement.
+    private func clearRows() {
+        liveRun = nil
+        rows = []
+        lastUpdate = nil
     }
 
     /// Shows rows while a measurement runs. Preliminary values only fill in rows that
     /// aren't shown yet, so a refresh never replaces a measured value with a rough one.
     private func apply(_ updates: [AppUsage], run: Int) {
         guard run == liveRun else { return }
-        let indices = Dictionary(rows.enumerated().map { ($1.name, $0) }, uniquingKeysWith: { a, _ in a })
+        let indices = Dictionary(rows.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { a, _ in a })
         for update in updates {
-            if let index = indices[update.name] {
+            if let index = indices[update.id] {
                 if !update.preliminary { rows[index] = update }
             } else {
                 rows.append(update)
@@ -93,7 +159,7 @@ final class MemoryModel {
     }
 
     private var isDue: Bool {
-        guard let lastFinished, rowsTopOnly == topOnly else { return true }
+        guard let lastFinished, rowsTopOnly == topOnly, rowsAllUsers == showsAllUsers else { return true }
         return interval != .manual && NSApp.occlusionState.contains(.visible)
             && ContinuousClock.now - lastFinished >= .seconds(interval.rawValue)
     }

@@ -1,6 +1,16 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "%@ wants to measure the memory of all users' processes." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ möchte den Speicherverbrauch der Prozesse aller Benutzer messen."
+          }
+        }
+      }
+    },
     "%lld apps" : {
       "localizations" : {
         "en" : {
@@ -51,6 +61,26 @@
         }
       }
     },
+    "Advanced" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erweitert"
+          }
+        }
+      }
+    },
+    "All Users" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alle Benutzer"
+          }
+        }
+      }
+    },
     "App" : {
       "localizations" : {
         "de" : {
@@ -77,6 +107,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Automatische Aktualisierung"
+          }
+        }
+      }
+    },
+    "Can't show all users' processes" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Prozesse aller Benutzer können nicht angezeigt werden"
+          }
+        }
+      }
+    },
+    "Click to show all users' processes (requires an administrator password)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Klicken, um die Prozesse aller Benutzer anzuzeigen (erfordert ein Administratorpasswort)"
           }
         }
       }
@@ -141,6 +191,26 @@
         }
       }
     },
+    "Memory used by several of the app's processes, counted only once in “Memory”" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Speicher, den mehrere Prozesse der App nutzen; in „Speicher“ nur einmal gezählt"
+          }
+        }
+      }
+    },
+    "Not measured (plain sum)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht gemessen (einfache Summe)"
+          }
+        }
+      }
+    },
     "Plain sum of the individual footprints (footprint unavailable, or skipped because hardly any memory can be shared): shared memory may be counted more than once." : {
       "localizations" : {
         "de" : {
@@ -201,6 +271,56 @@
         }
       }
     },
+    "Shared" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geteilt"
+          }
+        }
+      }
+    },
+    "Show the memory shared between each app's processes" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zeigt den Speicher, den sich die Prozesse einer App teilen"
+          }
+        }
+      }
+    },
+    "Showing all users' processes. Click to show only your own." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zeigt die Prozesse aller Benutzer. Klicken, um nur die eigenen anzuzeigen."
+          }
+        }
+      }
+    },
+    "The helper %@ wasn't found. Build it with “swift build”." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Hilfsprozess %@ wurde nicht gefunden. Mit „swift build“ erstellen."
+          }
+        }
+      }
+    },
+    "The helper process ended." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Hilfsprozess wurde beendet."
+          }
+        }
+      }
+    },
     "Top %lld only" : {
       "localizations" : {
         "de" : {
@@ -217,6 +337,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Aktualisiert %@"
+          }
+        }
+      }
+    },
+    "User" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Benutzer"
           }
         }
       }

@@ -3,12 +3,13 @@
 set -eu
 cd "$(dirname "$0")/.."
 
-swift build -c release --product AppMemoryReport
+# Both products: the CLI is also the root helper behind the GUI's lock button.
+swift build -c release
 bin=$(swift build -c release --show-bin-path)
 app=AppMemoryReport.app
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
-cp "$bin/AppMemoryReport" "$app/Contents/MacOS/"
+cp "$bin/AppMemoryReport" "$bin/app-memory-report" "$app/Contents/MacOS/"
 
 # Localizations go into the app itself (not as a nested SwiftPM resource bundle), so
 # the main bundle, and with it AppKit's standard menus, knows them.
@@ -45,5 +46,7 @@ cat > "$app/Contents/Info.plist" <<PLIST
 </dict>
 </plist>
 PLIST
+# Nested code is signed before the bundle.
+codesign --force --sign - "$app/Contents/MacOS/app-memory-report"
 codesign --force --sign - "$app"
 echo "Built $app"

@@ -22,6 +22,7 @@ struct FootprintTests {
         #expect(measurement.bytes == 150)
         #expect(measurement.processCount == 2)
         #expect(measurement.deduplicated)
+        #expect(measurement.plainSum == 180)
     }
 
     @Test func neverExceedsThePlainSum() throws {
@@ -35,6 +36,7 @@ struct FootprintTests {
         #expect(measurement.bytes == 100)
         #expect(measurement.processCount == 1)
         #expect(!measurement.deduplicated)
+        #expect(measurement.plainSum == 100)
     }
 
     @Test func malformedReport() {
@@ -88,7 +90,8 @@ struct FootprintCacheTests {
 
     private func filled() -> FootprintCache {
         var cache = FootprintCache()
-        cache.store(phys, Measurement(bytes: 150 * mib, processCount: 2, deduplicated: true), at: now)
+        cache.store(phys, Measurement(bytes: 150 * mib, processCount: 2, deduplicated: true, plainSum: 200 * mib),
+                    at: now)
         return cache
     }
 
@@ -96,6 +99,16 @@ struct FootprintCacheTests {
         let hit = try #require(filled().lookup([1: 101 * mib, 2: 101 * mib], now: now))
         #expect(hit.bytes == 152 * mib)
         #expect(hit.deduplicated)
+        #expect(hit.plainSum == 202 * mib)
+    }
+
+    /// footprint's snapshot can differ from the kernel values the group was read with:
+    /// the shared amount comes from the measurement, the tolerance from `phys`.
+    @Test func sharedAmountComesFromMeasurementSnapshot() throws {
+        var cache = FootprintCache()
+        cache.store(phys, Measurement(bytes: 150 * mib, processCount: 2, deduplicated: true, plainSum: 190 * mib),
+                    at: now)
+        #expect(try #require(cache.lookup(phys, now: now)).bytes == 160 * mib)
     }
 
     @Test func missesWhenSumMovedTooMuchProcessesChangedOrEntryIsOld() {
@@ -107,7 +120,8 @@ struct FootprintCacheTests {
 
     @Test func storesOnlyFootprintResults() {
         var cache = FootprintCache()
-        cache.store(phys, Measurement(bytes: 200 * mib, processCount: 2, deduplicated: false), at: now)
+        cache.store(phys, Measurement(bytes: 200 * mib, processCount: 2, deduplicated: false, plainSum: 200 * mib),
+                    at: now)
         #expect(cache.lookup(phys, now: now) == nil)
     }
 

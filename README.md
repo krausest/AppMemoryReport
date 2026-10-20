@@ -29,8 +29,12 @@ Requires macOS 14 or later and a Swift 6 toolchain (Xcode 16+). The CLI and the 
 
 ```sh
 swift run app-memory-report          # your own processes
-sudo swift run app-memory-report     # all users' processes
+
+# all users' processes, with a User column: build as yourself, run only the binary as root
+swift build && sudo .build/debug/app-memory-report
 ```
+
+Don't use `sudo swift run`: it builds as root and leaves root-owned files in `.build` that break later builds.
 
 ```
 App                                      Processes      Memory
@@ -49,7 +53,7 @@ Total                                          951 19937.3 MB
 ### GUI
 
 ```sh
-swift run AppMemoryReport         # run directly
+swift build && swift run AppMemoryReport   # run directly (the lock button needs the CLI built too)
 scripts/make-app.sh               # build AppMemoryReport.app (ad-hoc signed)
 open AppMemoryReport.app
 ```
@@ -60,7 +64,7 @@ The app ("App Memory Report", in German "Speicherverbrauch") shows the same per-
 - **Top 30 only** ("Nur Top 30"): on by default. Only the 30 largest apps are measured and shown, which saves a lot of CPU.
 - **Search:** a field to filter rows by name.
 
-Rows appear right away with a preliminary value ("≈", the plain sum of the kernel values) and are replaced as soon as each app is measured. Apps whose processes didn't change since the last refresh reuse their measured shared memory instead of running footprint again. Measuring pauses while the window isn't visible. The GUI shows only the current user's processes and leaves out the total.
+Rows appear right away with a preliminary value ("≈", the plain sum of the kernel values) and are replaced as soon as each app is measured. Apps whose processes didn't change since the last refresh reuse their measured shared memory instead of running footprint again. Measuring pauses while the window isn't visible. With "Advanced", a Shared column shows how much memory each app's processes share, i.e. how much less the row is than the sum of its processes in Activity Monitor. The GUI leaves out the total. It shows only your own processes until you click the lock and enter an administrator password: the app then starts its bundled CLI as a root helper (`app-memory-report --serve`, via the standard password dialog) that measures all users' processes for it, and adds a User column. The helper talks to the app over a Unix socket in the app's private temp folder, accepts only measurement requests, and exits when you click the lock again or quit the app.
 
 ## How it works
 
@@ -72,7 +76,7 @@ snapshot processes → attribute to apps → measure each group → table
 
 **Snapshot** (`ProcessTable.swift`): lists all PIDs via libproc (`proc_listallpids`, `proc_pidinfo`, `proc_pidpath`). Processes of other users that refuse the full info without root, like the `login` between a terminal and its shell, are read with the short info. For each process it also asks the private libSystem function `responsibility_get_pid_responsible_for_pid` which process macOS holds responsible for it. For example, Safari is responsible for its WebKit XPC services even though `launchd` is their parent.
 
-**Grouping** (`Grouping.swift`): each process follows its parent while the responsible process is an ancestor (or the process is responsible for itself), otherwise it jumps to the responsible process, up to a *root*. A command started in a terminal (Terminal, iTerm2, VS Code's terminal, …) is a root of its own: the child of the topmost shell with a controlling terminal, so a dev server shows up as its own row (named after its command line, e.g. `npm run dev`) instead of inside the terminal app. Roots inside the same `.app` bundle are merged by the **outermost** bundle, so nested helper apps (`Firefox.app/Contents/MacOS/plugin-container.app`, Electron helpers, …) count toward their main app. Each group is named after the bundle's display name. Processes outside any bundle each form a row named after their executable. While Safari runs, its background agents (sync, notifications, Safe Browsing, history) are added to it, and iTerm2 gets its session servers, including one left over from before an update.
+**Grouping** (`Grouping.swift`): each process follows its parent while the responsible process is an ancestor (or the process is responsible for itself), otherwise it jumps to the responsible process, up to a *root*. A command started in a terminal (Terminal, iTerm2, VS Code's terminal, …) is a root of its own: the child of the topmost shell with a controlling terminal, so a dev server shows up as its own row (named after its command line, e.g. `npm run dev`) instead of inside the terminal app. Roots of the same user inside the same `.app` bundle are merged by the **outermost** bundle, so nested helper apps (`Firefox.app/Contents/MacOS/plugin-container.app`, Electron helpers, …) count toward their main app. Each group is named after the bundle's display name. Processes outside any bundle each form a row named after their executable. While Safari runs, its background agents (sync, notifications, Safe Browsing, history) are added to it, and iTerm2 gets its session servers, including one left over from before an update.
 
 **Measuring** (`Footprint.swift`): each group's PIDs are passed to a single `/usr/bin/footprint` run. Its *total footprint* is the group's physical memory with shared pages counted once. Footprint is the same metric Activity Monitor calls "Memory": dirty memory, plus compressed and swapped memory. The kernel sometimes charges a process for memory that footprint's region analysis counts as clean, e.g. OrbStack's helper for gigabytes of its mapped VM disk image. That difference is added per process, so the figures agree with Activity Monitor's, except that shared memory is counted once. The result never exceeds the plain sum of the kernel values. Single-process groups skip footprint and read the kernel value (`ri_phys_footprint`) directly. So do groups where all but the largest process together use at most 1 MB or 1 % (marked `*`). If footprint fails, or a process exits in the meantime and footprint's report includes processes that weren't requested, the row falls back to the plain per-process sum and is marked `*`. The groups are measured in parallel.
 
@@ -90,5 +94,5 @@ snapshot processes → attribute to apps → measure each group → table
 ## Limitations
 
 - macOS only. It relies on a private (but long-standing) libSystem function and on `/usr/bin/footprint`.
-- Without root, only your own processes can be measured. The CLI accepts `sudo`; the GUI is limited to the current user.
+- Without root, only your own processes can be measured. Run the CLI binary with `sudo`; in the GUI, click the lock.
 - Memory shared between *different* apps (e.g. graphics buffers shared with another process) counts fully in each app's row.

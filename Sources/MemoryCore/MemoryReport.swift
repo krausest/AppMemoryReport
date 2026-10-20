@@ -2,17 +2,26 @@ import Darwin
 import Foundation
 
 /// Memory of one app or root process with all processes attributed to it.
-public struct AppUsage: Identifiable, Sendable {
-    public var id: String { name }
+public struct AppUsage: Identifiable, Sendable, Codable {
+    /// Names are unique per user, see `groupProcesses`.
+    public var id: String { "\(uid)/\(name)" }
     public let name: String
+    /// Owner of the app or root process.
+    public let uid: uid_t
     public let processCount: Int
     public let bytes: UInt64
     /// false if shared memory may be counted more than once (see `Measurement`).
     public let deduplicated: Bool
+    /// Sum of the processes' `phys_footprint` that `bytes` was measured from.
+    public let plainSum: UInt64
     /// Plain sum of the kernel values, reported via `progress` before `footprint` is done.
     public let preliminary: Bool
     /// Outermost `.app` bundle, nil for processes outside any bundle.
     public let appPath: String?
+
+    /// Memory counted in several of the group's processes, which `bytes` counts once.
+    /// Only measured if `deduplicated` and not `preliminary`.
+    public var shared: UInt64 { plainSum > bytes ? plainSum - bytes : 0 }
 }
 
 public struct MemoryReport: Sendable {
@@ -125,14 +134,16 @@ private struct Candidate: Sendable {
     }
 
     func usage(_ measurement: Measurement, preliminary: Bool = false) -> AppUsage {
-        AppUsage(name: group.name, processCount: measurement.processCount, bytes: measurement.bytes,
-                 deduplicated: measurement.deduplicated, preliminary: preliminary, appPath: group.appPath)
+        AppUsage(name: group.name, uid: group.uid, processCount: measurement.processCount, bytes: measurement.bytes,
+                 deduplicated: measurement.deduplicated, plainSum: measurement.plainSum,
+                 preliminary: preliminary, appPath: group.appPath)
     }
 }
 
 extension Measurement {
     static func plainSum(of phys: [pid_t: UInt64]) -> Measurement {
-        Measurement(bytes: phys.values.reduce(0, +), processCount: phys.count, deduplicated: phys.count <= 1)
+        let sum = phys.values.reduce(0, +)
+        return Measurement(bytes: sum, processCount: phys.count, deduplicated: phys.count <= 1, plainSum: sum)
     }
 }
 
@@ -157,6 +168,11 @@ func measureTop<T, R>(
         if values[limit - 1] >= bound(ranked[end]) { return results }
         end = min(ranked.count, end + batch)
     }
+}
+
+/// Login name of `uid`, or the number if it has no account.
+public func userName(of uid: uid_t) -> String {
+    getpwuid(uid).map { String(cString: $0.pointee.pw_name) } ?? String(uid)
 }
 
 /// Always in MB with one decimal, e.g. "3420.2 MB" / "692.0 MB", with the user's decimal separator.

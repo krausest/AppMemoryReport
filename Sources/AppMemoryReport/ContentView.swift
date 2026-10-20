@@ -7,14 +7,21 @@ struct ContentView: View {
     @Environment(MemoryModel.self) private var model
     @State private var search = ""
     @State private var selection: AppUsage.ID?
+    /// Shows the Shared column.
+    @State private var showsShared = false
+    /// Only for the visibility of the User and Shared columns (an `if` in the table needs macOS 14.4).
+    @State private var columns = TableColumnCustomization<AppUsage>()
 
     private var filteredRows: [AppUsage] {
-        search.isEmpty ? model.rows : model.rows.filter { $0.name.localizedCaseInsensitiveContains(search) }
+        search.isEmpty ? model.rows : model.rows.filter {
+            $0.name.localizedCaseInsensitiveContains(search)
+                || model.showsAllUsers && $0.userName.localizedCaseInsensitiveContains(search)
+        }
     }
 
     var body: some View {
         @Bindable var model = model
-        Table(filteredRows, selection: $selection, sortOrder: $model.sortOrder) {
+        Table(filteredRows, selection: $selection, sortOrder: $model.sortOrder, columnCustomization: $columns) {
             TableColumn(localized("App"), value: \.name) { row in
                 HStack(spacing: 6) {
                     Image(nsImage: AppIcons.icon(for: row.appPath))
@@ -23,6 +30,9 @@ struct ContentView: View {
                     Text(row.name)
                 }
             }
+            TableColumn(localized("User"), value: \.userName)
+                .width(min: 50, ideal: 80, max: 140)
+                .customizationID("user")
             TableColumn(localized("Processes"), value: \.processCount) { row in
                 Text(String(row.processCount))
                     .monospacedDigit()
@@ -42,16 +52,52 @@ struct ContentView: View {
                 .help(row.preliminary ? localized("Preliminary: sum of the individual footprints, still being measured") : "")
             }
             .width(min: 90, ideal: 105, max: 140)
+            TableColumn(localized("Shared"), value: \.shared) { row in
+                let measured = row.deduplicated && !row.preliminary
+                Text(measured ? formatBytes(row.shared) : "–")
+                    .monospacedDigit()
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .help(measured ? localized("Memory used by several of the app's processes, counted only once in “Memory”")
+                        : localized("Not measured (plain sum)"))
+            }
+            .width(min: 80, ideal: 95, max: 140)
+            .customizationID("shared")
         }
         .onChange(of: model.sortOrder) { model.sortRows() }
+        .onChange(of: model.showsAllUsers, initial: true) {
+            columns[visibility: "user"] = model.showsAllUsers ? .visible : .hidden
+        }
+        .onChange(of: showsShared, initial: true) {
+            columns[visibility: "shared"] = showsShared ? .visible : .hidden
+        }
         .searchable(text: $search, placement: .toolbar, prompt: localized("Search"))
         .toolbar {
             ToolbarItemGroup {
+                Button {
+                    Task { await model.setShowsAllUsers(!model.showsAllUsers) }
+                } label: {
+                    Label(localized("All Users"), systemImage: model.showsAllUsers ? "lock.open.fill" : "lock.fill")
+                }
+                .disabled(model.isAuthenticating)
+                .help(model.showsAllUsers
+                    ? localized("Showing all users' processes. Click to show only your own.")
+                    : localized("Click to show all users' processes (requires an administrator password)"))
                 Toggle(localized("Top \(MemoryModel.topCount) only"), isOn: $model.topOnly)
                     .toggleStyle(.checkbox)
                     .help(localized("Measure and show only the largest apps (saves a lot of CPU)"))
-                Picker(localized("Interval"), selection: $model.interval) {
-                    ForEach(RefreshInterval.allCases) { Text($0.label).tag($0) }
+                Toggle(localized("Advanced"), isOn: $showsShared)
+                    .toggleStyle(.checkbox)
+                    .help(localized("Show the memory shared between each app's processes"))
+                // A menu with the current value as its title: a Picker in the toolbar
+                // doesn't reliably show its selection.
+                Menu {
+                    Picker(localized("Interval"), selection: $model.interval) {
+                        ForEach(RefreshInterval.allCases) { Text($0.label).tag($0) }
+                    }
+                    .pickerStyle(.inline)
+                    .labelsHidden()
+                } label: {
+                    Text(model.interval.label)
                 }
                 .help(localized("Automatic refresh"))
                 Button {
@@ -71,6 +117,11 @@ struct ContentView: View {
             statusBar
         }
         .task { await model.runAutoRefresh() }
+        .alert(localized("Can't show all users' processes"), isPresented: Binding(
+            get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } }
+        )) {} message: {
+            Text(model.errorMessage ?? "")
+        }
     }
 
     private var statusBar: some View {
@@ -96,6 +147,10 @@ struct ContentView: View {
         let measured = seconds.formatted(.number.precision(.fractionLength(1)))
         return [count, localized("Updated \(time)"), localized("Measurement \(measured) s")].joined(separator: " · ")
     }
+}
+
+extension AppUsage {
+    var userName: String { MemoryCore.userName(of: uid) }
 }
 
 @MainActor

@@ -148,6 +148,22 @@ struct GroupingTests {
             == ["node [801]", "node [802]", "Notes (com.apple.Notes)", "Notes (com.example.notes)"])
     }
 
+    /// Two users' Safari are separate rows with the same name, owned by the root's user;
+    /// a root-owned helper attributed to an app stays in that user's row.
+    @Test func appsAreGroupedPerUser() {
+        let entries = [
+            safari,
+            process(101, "/System/Library/Frameworks/WebKit.framework/XPCServices/WebContent",
+                    responsible: 100, uid: 0),
+            process(900, "/Applications/Safari.app/Contents/MacOS/Safari", uid: 502),
+        ]
+        let table = Dictionary(uniqueKeysWithValues: entries.map { ($0.pid, $0) })
+        let groups = groupProcesses(table, includeAllUsers: true, uid: me, appBundle: appBundle,
+                                    arguments: { _ in nil })
+        #expect(Set(groups.map { "\($0.name) \($0.uid) \($0.pids.sorted())" })
+            == ["Safari 501 [100, 101]", "Safari 502 [900]"])
+    }
+
     @Test func outermostAppPathSkipsDirectoriesThatArentBundles() {
         let isBundle: (String) -> Bool = { $0.hasSuffix("/Real.app") || $0.hasSuffix("/Inner.app") }
         #expect(outermostAppPath(forExecutable: "/Users/me/my.app/Real.app/Contents/Inner.app/Contents/MacOS/x",
