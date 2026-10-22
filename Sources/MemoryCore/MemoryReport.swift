@@ -19,7 +19,8 @@ public struct AppUsage: Identifiable, Sendable, Codable {
     /// Outermost `.app` bundle, nil for processes outside any bundle.
     public let appPath: String?
 
-    /// Memory counted in several of the group's processes, which `bytes` counts once.
+    /// How much `plainSum` overcounts: memory mapped by several of the group's processes is in it
+    /// once per process, in `bytes` only once.
     /// Only measured if `deduplicated` and not `preliminary`.
     public var shared: UInt64 { plainSum > bytes ? plainSum - bytes : 0 }
 }

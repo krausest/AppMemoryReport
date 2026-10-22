@@ -15,7 +15,7 @@ Activity Monitor answers that question roughly the way a phone book answers "who
 
 - **Safari** lists your open URLs next to a collection of Safari and WebKit processes. That's charmingly honest, but it doesn't add up to a total.
 
-You might be tempted to just add up the column. Don't: helper processes share memory pages, and a naive sum counts every shared page once for each process that maps it. You get a number, just not the right one.
+You might be tempted to just add up the column. That gets you close, but not all the way: helper processes share some memory, and a naive sum counts every shared page once for each process that maps it. For Brave that's about 5 % too much. Pick the wrong column and it gets much worse: "Real Memory" also counts shared code and files in every process, and Brave's processes add up to 2.7 times what they actually use. ([Here's the math](MeasurementExample.md), if you're into that sort of thing.)
 
 ## So "I" wrote a tool
 

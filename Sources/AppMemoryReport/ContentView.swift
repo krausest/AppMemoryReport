@@ -87,7 +87,7 @@ struct ContentView: View {
                     .help(localized("Measure and show only the largest apps (saves a lot of CPU)"))
                 Toggle(localized("Advanced"), isOn: $showsShared)
                     .toggleStyle(.checkbox)
-                    .help(localized("Show the memory shared between each app's processes"))
+                    .help(localized("Show how much less each row is than the sum of its processes, because memory they share counts only once"))
                 // A menu with the current value as its title: a Picker in the toolbar
                 // doesn't reliably show its selection.
                 Menu {

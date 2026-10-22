@@ -14,7 +14,7 @@ Modern apps are not one process. A browser with a dozen tabs easily runs 20–50
 
 That makes it hard to answer a simple question: *what does this app cost me in RAM?*
 
-Summing up the rows by hand doesn't work either. The processes of one app share memory, and a naive sum counts every shared page once per process, so it overstates the total.
+Summing up the rows by hand doesn't give the exact value either. The processes of one app share some memory, and a naive sum counts every shared page once per process. Summing Activity Monitor's "Memory" column overstates a browser by a few percent (Brave: 4.7 %). Summing "Real Memory" (resident size) is far worse: it also counts shared code and mapped files in every process, and comes out at 2.7 times the actual value for Brave. See [docs/MeasurementExample.md](docs/MeasurementExample.md) for a worked example.
 
 app-memory-report does both steps for you:
 
@@ -64,7 +64,7 @@ The app ("App Memory Report", in German "Speicherverbrauch") shows the same per-
 - **Top 30 only** ("Nur Top 30"): on by default. Only the 30 largest apps are measured and shown, which saves a lot of CPU.
 - **Search:** a field to filter rows by name.
 
-Rows appear right away with a preliminary value ("≈", the plain sum of the kernel values) and are replaced as soon as each app is measured. Apps whose processes didn't change since the last refresh reuse their measured shared memory instead of running footprint again. Measuring pauses while the window isn't visible. With "Advanced", a Shared column shows how much memory each app's processes share, i.e. how much less the row is than the sum of its processes in Activity Monitor. The GUI leaves out the total. It shows only your own processes until you click the lock and enter an administrator password: the app then starts its bundled CLI as a root helper (`app-memory-report --serve`, via the standard password dialog) that measures all users' processes for it, and adds a User column. The helper talks to the app over a Unix socket in the app's private temp folder, accepts only measurement requests, and exits when you click the lock again or quit the app.
+Rows appear right away with a preliminary value ("≈", the plain sum of the kernel values) and are replaced as soon as each app is measured. Apps whose processes didn't change since the last refresh reuse their measured shared memory instead of running footprint again. Measuring pauses while the window isn't visible. With "Advanced", a Shared column shows how much less the row is than the sum of its processes in Activity Monitor, i.e. how much memory the plain sum counts more than once. A region shared by three processes counts twice there. The GUI leaves out the total. It shows only your own processes until you click the lock and enter an administrator password: the app then starts its bundled CLI as a root helper (`app-memory-report --serve`, via the standard password dialog) that measures all users' processes for it, and adds a User column. The helper talks to the app over a Unix socket in the app's private temp folder, accepts only measurement requests, and exits when you click the lock again or quit the app.
 
 ## How it works
 
@@ -80,7 +80,7 @@ snapshot processes → attribute to apps → measure each group → table
 
 **Measuring** (`Footprint.swift`): each group's PIDs are passed to a single `/usr/bin/footprint` run. Its *total footprint* is the group's physical memory with shared pages counted once. Footprint is the same metric Activity Monitor calls "Memory": dirty memory, plus compressed and swapped memory. The kernel sometimes charges a process for memory that footprint's region analysis counts as clean, e.g. OrbStack's helper for gigabytes of its mapped VM disk image. That difference is added per process, so the figures agree with Activity Monitor's, except that shared memory is counted once. The result never exceeds the plain sum of the kernel values. Single-process groups skip footprint and read the kernel value (`ri_phys_footprint`) directly. So do groups where all but the largest process together use at most 1 MB or 1 % (marked `*`). If footprint fails, or a process exits in the meantime and footprint's report includes processes that weren't requested, the row falls back to the plain per-process sum and is marked `*`. The groups are measured in parallel.
 
-**Cost:** footprint is not cheap. Measuring all processes together for the total takes ~8 s and ~50 CPU-seconds on a busy machine. That's why the GUI skips the total and, by default, measures only the top candidates. Groups are first ranked by the cheap per-process sum, then footprint runs for the top 40, and more in steps of 10 until no unmeasured group can make it into the top 30. A first measurement costs ~1.5 s and ~11 CPU-seconds. Later refreshes reuse the shared memory measured for groups whose processes are unchanged (plain sum within 2 %, at most 5 minutes old) and cost well under one CPU-second when little changes. In practice, deduplication corrects less than 1 % per app.
+**Cost:** footprint is not cheap. Measuring all processes together for the total takes ~8 s and ~50 CPU-seconds on a busy machine. That's why the GUI skips the total and, by default, measures only the top candidates. Groups are first ranked by the cheap per-process sum, then footprint runs for the top 40, and more in steps of 10 until no unmeasured group can make it into the top 30. A first measurement costs ~1.5 s and ~11 CPU-seconds. Later refreshes reuse the shared memory measured for groups whose processes are unchanged (plain sum within 2 %, at most 5 minutes old) and cost well under one CPU-second when little changes. In practice, deduplication corrects less than 1 % for most apps and a few percent for browsers (Brave: 4.5 %), and an app's shared amount barely changes while its processes stay the same.
 
 ### Code layout
 
@@ -95,4 +95,4 @@ snapshot processes → attribute to apps → measure each group → table
 
 - macOS only. It relies on a private (but long-standing) libSystem function and on `/usr/bin/footprint`.
 - Without root, only your own processes can be measured. Run the CLI binary with `sudo`; in the GUI, click the lock.
-- Memory shared between *different* apps (e.g. graphics buffers shared with another process) counts fully in each app's row.
+- Memory shared between *different* apps counts fully in each app's row.

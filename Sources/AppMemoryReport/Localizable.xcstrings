@@ -281,12 +281,12 @@
         }
       }
     },
-    "Show the memory shared between each app's processes" : {
+    "Show how much less each row is than the sum of its processes, because memory they share counts only once" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Zeigt den Speicher, den sich die Prozesse einer App teilen"
+            "value" : "Zeigt, um wie viel jede Zeile kleiner ist als die Summe ihrer Prozesse, weil gemeinsam genutzter Speicher nur einmal zählt"
           }
         }
       }
