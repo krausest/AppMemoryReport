@@ -1,6 +1,16 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "%@ of %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ von %2$@"
+          }
+        }
+      }
+    },
     "%@ wants to measure the memory of all users' processes." : {
       "localizations" : {
         "de" : {
@@ -121,12 +131,32 @@
         }
       }
     },
+    "Check the spelling or try a new search." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prüfe die Schreibweise oder versuche es mit einem anderen Suchbegriff."
+          }
+        }
+      }
+    },
     "Click to show all users' processes (requires an administrator password)" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Klicken, um die Prozesse aller Benutzer anzuzeigen (erfordert ein Administratorpasswort)"
+          }
+        }
+      }
+    },
+    "Collecting data…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Daten werden gesammelt…"
           }
         }
       }
@@ -147,16 +177,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Manuell"
-          }
-        }
-      }
-    },
-    "Measure and show only the largest apps (saves a lot of CPU)" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nur die größten Anwendungen messen und anzeigen (spart viel CPU)"
           }
         }
       }
@@ -191,6 +211,36 @@
         }
       }
     },
+    "Memory pressure: critical" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Speicherdruck: kritisch"
+          }
+        }
+      }
+    },
+    "Memory pressure: elevated" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Speicherdruck: erhöht"
+          }
+        }
+      }
+    },
+    "Memory pressure: normal" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Speicherdruck: normal"
+          }
+        }
+      }
+    },
     "Memory used by several of the app's processes, counted only once in “Memory”" : {
       "localizations" : {
         "de" : {
@@ -201,12 +251,32 @@
         }
       }
     },
+    "No Results for “%@”" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Ergebnisse für „%@“"
+          }
+        }
+      }
+    },
     "Not measured (plain sum)" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nicht gemessen (einfache Summe)"
+          }
+        }
+      }
+    },
+    "Options" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Optionen"
           }
         }
       }
@@ -237,6 +307,36 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Prozesse"
+          }
+        }
+      }
+    },
+    "RAM used" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "RAM belegt"
+          }
+        }
+      }
+    },
+    "RAM used %@ of %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "RAM belegt %1$@ von %2$@"
+          }
+        }
+      }
+    },
+    "RAM used: Activity Monitor's “Memory Used”, the physical memory actually occupied by all users' apps, the kernel and the compressor. The rows count compressed memory at its original size, so they can add up to more." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "RAM belegt: „Benutzter Speicher“ der Aktivitätsanzeige, der tatsächlich belegte physische Speicher der Anwendungen aller Benutzer, des Kernels und des Kompressors. Die Zeilen zählen komprimierten Speicher mit seiner ursprünglichen Größe und können daher zusammen mehr ergeben."
           }
         }
       }
@@ -277,16 +377,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Geteilt"
-          }
-        }
-      }
-    },
-    "Show how much less each row is than the sum of its processes, because memory they share counts only once" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Zeigt, um wie viel jede Zeile kleiner ist als die Summe ihrer Prozesse, weil gemeinsam genutzter Speicher nur einmal zählt"
           }
         }
       }

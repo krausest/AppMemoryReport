@@ -21,7 +21,33 @@ struct ContentView: View {
 
     var body: some View {
         @Bindable var model = model
-        Table(filteredRows, selection: $selection, sortOrder: $model.sortOrder, columnCustomization: $columns) {
+        // Not a safe-area inset: the split view ignores it and would run under the status bar.
+        VStack(spacing: 0) {
+            VSplitView {
+                table
+                    .frame(minHeight: 150)
+                    .layoutPriority(1)
+                chart
+                    .frame(minHeight: 160, maxHeight: 400)
+            }
+            statusBar
+        }
+        .searchable(text: $search, placement: .toolbar, prompt: localized("Search"))
+        .navigationSubtitle(subtitle)
+        .toolbar {
+            toolbar
+        }
+        .task { await model.runAutoRefresh() }
+        .alert(localized("Can't show all users' processes"), isPresented: Binding(
+            get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } }
+        )) {} message: {
+            Text(model.errorMessage ?? "")
+        }
+    }
+
+    private var table: some View {
+        @Bindable var model = model
+        return Table(filteredRows, selection: $selection, sortOrder: $model.sortOrder, columnCustomization: $columns) {
             TableColumn(localized("App"), value: \.name) { row in
                 HStack(spacing: 6) {
                     Image(nsImage: AppIcons.icon(for: row.appPath))
@@ -44,6 +70,8 @@ struct ContentView: View {
                     Text((row.preliminary ? "≈ " : "") + formatBytes(row.bytes))
                         .monospacedDigit()
                         .foregroundStyle(row.preliminary ? .secondary : .primary)
+                        .contentTransition(.numericText(value: Double(row.bytes)))
+                        .animation(.snappy, value: row.bytes)
                     Text("*")
                         .opacity(row.deduplicated || row.preliminary ? 0 : 1)
                         .help(localized("Plain sum of the individual footprints (footprint unavailable, or skipped because hardly any memory can be shared): shared memory may be counted more than once."))
@@ -70,82 +98,128 @@ struct ContentView: View {
         .onChange(of: showsShared, initial: true) {
             columns[visibility: "shared"] = showsShared ? .visible : .hidden
         }
-        .searchable(text: $search, placement: .toolbar, prompt: localized("Search"))
-        .toolbar {
-            ToolbarItemGroup {
-                Button {
-                    Task { await model.setShowsAllUsers(!model.showsAllUsers) }
-                } label: {
-                    Label(localized("All Users"), systemImage: model.showsAllUsers ? "lock.open.fill" : "lock.fill")
-                }
-                .disabled(model.isAuthenticating)
-                .help(model.showsAllUsers
-                    ? localized("Showing all users' processes. Click to show only your own.")
-                    : localized("Click to show all users' processes (requires an administrator password)"))
-                Toggle(localized("Top \(MemoryModel.topCount) only"), isOn: $model.topOnly)
-                    .toggleStyle(.checkbox)
-                    .help(localized("Measure and show only the largest apps (saves a lot of CPU)"))
-                Toggle(localized("Advanced"), isOn: $showsShared)
-                    .toggleStyle(.checkbox)
-                    .help(localized("Show how much less each row is than the sum of its processes, because memory they share counts only once"))
-                // A menu with the current value as its title: a Picker in the toolbar
-                // doesn't reliably show its selection.
-                Menu {
-                    Picker(localized("Interval"), selection: $model.interval) {
-                        ForEach(RefreshInterval.allCases) { Text($0.label).tag($0) }
-                    }
-                    .pickerStyle(.inline)
-                    .labelsHidden()
-                } label: {
-                    Text(model.interval.label)
-                }
-                .help(localized("Automatic refresh"))
-                Button {
-                    Task { await model.refresh() }
-                } label: {
-                    if model.isMeasuring {
-                        ProgressView().controlSize(.small)
-                    } else {
-                        Label(localized("Refresh"), systemImage: "arrow.clockwise")
-                    }
-                }
-                .disabled(model.isMeasuring)
-                .help(localized("Refresh (⌘R)"))
+        .overlay {
+            if filteredRows.isEmpty && !search.isEmpty {
+                ContentUnavailableView(localized("No Results for “\(search)”"), systemImage: "magnifyingglass",
+                                       description: Text(localized("Check the spelling or try a new search.")))
             }
-        }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            statusBar
-        }
-        .task { await model.runAutoRefresh() }
-        .alert(localized("Can't show all users' processes"), isPresented: Binding(
-            get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } }
-        )) {} message: {
-            Text(model.errorMessage ?? "")
         }
     }
 
+    /// The selected row's history, or system RAM without a selection.
+    @ViewBuilder
+    private var chart: some View {
+        if let selection, let row = model.rows.first(where: { $0.id == selection }) {
+            MemoryChart(title: row.name, value: formatBytes(row.bytes), samples: model.histories[selection] ?? [])
+        } else {
+            MemoryChart(title: localized("RAM used"), value: model.systemMemory.map {
+                localized("\(formatBytes($0.used)) of \(formatBytes($0.physical))")
+            } ?? "", samples: model.ramHistory)
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var toolbar: some ToolbarContent {
+        @Bindable var model = model
+        ToolbarItemGroup {
+            Button {
+                Task { await model.setShowsAllUsers(!model.showsAllUsers) }
+            } label: {
+                Label(localized("All Users"), systemImage: model.showsAllUsers ? "lock.open.fill" : "lock.fill")
+            }
+            .disabled(model.isAuthenticating)
+            .help(model.showsAllUsers
+                ? localized("Showing all users' processes. Click to show only your own.")
+                : localized("Click to show all users' processes (requires an administrator password)"))
+            Menu {
+                Toggle(localized("Top \(MemoryModel.topCount) only"), isOn: $model.topOnly)
+                Toggle(localized("Advanced"), isOn: $showsShared)
+            } label: {
+                Label(localized("Options"), systemImage: "slider.horizontal.3")
+            }
+            .help(localized("Options"))
+            // A menu with the current value as its title: a Picker in the toolbar
+            // doesn't reliably show its selection.
+            Menu {
+                Picker(localized("Interval"), selection: $model.interval) {
+                    ForEach(RefreshInterval.allCases) { Text($0.label).tag($0) }
+                }
+                .pickerStyle(.inline)
+                .labelsHidden()
+            } label: {
+                Text(model.interval.label)
+            }
+            .help(localized("Automatic refresh"))
+            Button {
+                Task { await model.refresh() }
+            } label: {
+                if model.isMeasuring {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Label(localized("Refresh"), systemImage: "arrow.clockwise")
+                }
+            }
+            .disabled(model.isMeasuring)
+            .help(localized("Refresh (⌘R)"))
+        }
+    }
+
+    /// RAM gauge colored by memory pressure on the left, time and duration of the last measurement on the right.
     private var statusBar: some View {
-        HStack {
-            Text(statusText)
+        HStack(spacing: 8) {
+            if let memory = model.systemMemory {
+                Gauge(value: Double(memory.used), in: 0...Double(memory.physical)) {}
+                    .gaugeStyle(.linearCapacity)
+                    .tint(memory.pressure.color)
+                    .frame(width: 90)
+                Text(localized("RAM used \(formatBytes(memory.used)) of \(formatBytes(memory.physical))"))
+                    .monospacedDigit()
+                    .contentTransition(.numericText(value: Double(memory.used)))
+                    .animation(.snappy, value: memory.used)
+            }
             Spacer()
+            Text(lastMeasurementText)
         }
         .font(.callout)
         .foregroundStyle(.secondary)
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
         .background(.bar)
+        .help((model.systemMemory.map { $0.pressure.label + "\n" } ?? "")
+            + localized("RAM used: Activity Monitor's “Memory Used”, the physical memory actually occupied by all users' apps, the kernel and the compressor. The rows count compressed memory at its original size, so they can add up to more."))
     }
 
-    private var statusText: String {
-        guard let lastUpdate = model.lastUpdate, let duration = model.lastDuration else {
-            return localized("Measuring…")
-        }
-        let seconds = Double(duration.components.seconds) + Double(duration.components.attoseconds) / 1e18
-        let count = model.rows.count < model.groupCount
+    private var subtitle: String {
+        guard model.lastUpdate != nil else { return localized("Measuring…") }
+        return model.rows.count < model.groupCount
             ? localized("\(model.rows.count) of \(model.groupCount) apps") : localized("\(model.rows.count) apps")
+    }
+
+    private var lastMeasurementText: String {
+        guard let lastUpdate = model.lastUpdate, let duration = model.lastDuration else { return "" }
+        let seconds = Double(duration.components.seconds) + Double(duration.components.attoseconds) / 1e18
         let time = lastUpdate.formatted(date: .omitted, time: .standard)
         let measured = seconds.formatted(.number.precision(.fractionLength(1)))
-        return [count, localized("Updated \(time)"), localized("Measurement \(measured) s")].joined(separator: " · ")
+        return [localized("Updated \(time)"), localized("Measurement \(measured) s")].joined(separator: " · ")
+    }
+}
+
+extension SystemMemory.Pressure {
+    /// As in Activity Monitor's "Memory Pressure" graph.
+    var color: Color {
+        switch self {
+        case .normal: .green
+        case .warning: .yellow
+        case .critical: .red
+        }
+    }
+
+    var label: String {
+        switch self {
+        case .normal: localized("Memory pressure: normal")
+        case .warning: localized("Memory pressure: elevated")
+        case .critical: localized("Memory pressure: critical")
+        }
     }
 }
 

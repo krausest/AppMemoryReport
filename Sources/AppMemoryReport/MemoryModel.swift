@@ -9,6 +9,13 @@ enum RefreshInterval: Int, CaseIterable, Identifiable {
     var label: String { self == .manual ? localized("Manual") : "\(rawValue) s" }
 }
 
+/// One value per finished measurement, for the chart.
+struct MemorySample: Identifiable {
+    let date: Date
+    let bytes: UInt64
+    var id: Date { date }
+}
+
 @Observable
 @MainActor
 final class MemoryModel {
@@ -22,6 +29,15 @@ final class MemoryModel {
     private(set) var isMeasuring = false
     private(set) var lastUpdate: Date?
     private(set) var lastDuration: Duration?
+    /// System-wide RAM in use, read after each measurement.
+    private(set) var systemMemory: SystemMemory?
+    /// The last `historyLength` measured values per row, oldest first.
+    private(set) var histories: [AppUsage.ID: [MemorySample]] = [:]
+    /// The last `historyLength` values of `systemMemory.used`, oldest first.
+    private(set) var ramHistory: [MemorySample] = []
+    static let historyLength = 64
+    /// Histories of rows that are no longer measured are dropped after this long.
+    private static let historyRetention: TimeInterval = 30 * 60
     /// End of the last measurement; the next automatic one starts `interval` later.
     private var lastFinished: ContinuousClock.Instant?
     /// `topOnly` of the shown rows; a mismatch triggers a new measurement.
@@ -91,6 +107,24 @@ final class MemoryModel {
         rowsAllUsers = helper != nil
         groupCount = result.groupCount
         rows = result.rows.sorted(using: sortOrder)
+        systemMemory = SystemMemory.current()
+        recordSamples(result.rows, at: lastUpdate!)
+    }
+
+    /// Appends the final values of a measurement (never preliminary ones) to the histories.
+    private func recordSamples(_ measured: [AppUsage], at date: Date) {
+        func append(_ bytes: UInt64, to history: inout [MemorySample]) {
+            history.append(MemorySample(date: date, bytes: bytes))
+            history.removeFirst(max(0, history.count - Self.historyLength))
+        }
+        for row in measured {
+            append(row.bytes, to: &histories[row.id, default: []])
+        }
+        if let systemMemory {
+            append(systemMemory.used, to: &ramHistory)
+        }
+        // Short-lived rows (e.g. terminal commands) would otherwise pile up.
+        histories = histories.filter { date.timeIntervalSince($0.value.last!.date) < Self.historyRetention }
     }
 
     /// Shows all users' processes (starting the root helper, which asks for an administrator
@@ -122,9 +156,11 @@ final class MemoryModel {
     }
 
     /// Drops rows of the other mode (own / all users), including those of a running measurement.
+    /// The RAM history is system-wide and stays.
     private func clearRows() {
         liveRun = nil
         rows = []
+        histories = [:]
         lastUpdate = nil
     }
 
