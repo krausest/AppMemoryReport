@@ -23,6 +23,7 @@ struct FootprintTests {
         #expect(measurement.processCount == 2)
         #expect(measurement.deduplicated)
         #expect(measurement.plainSum == 180)
+        #expect(measurement.processes == [1: 100, 2: 80])
     }
 
     @Test func neverExceedsThePlainSum() throws {
@@ -37,6 +38,7 @@ struct FootprintTests {
         #expect(measurement.processCount == 1)
         #expect(!measurement.deduplicated)
         #expect(measurement.plainSum == 100)
+        #expect(measurement.processes == [1: 100])
     }
 
     @Test func malformedReport() {
@@ -90,7 +92,7 @@ struct FootprintCacheTests {
 
     private func filled() -> FootprintCache {
         var cache = FootprintCache()
-        cache.store(phys, Measurement(bytes: 150 * mib, processCount: 2, deduplicated: true, plainSum: 200 * mib),
+        cache.store(phys, Measurement(bytes: 150 * mib, processes: phys, deduplicated: true),
                     at: now)
         return cache
     }
@@ -106,7 +108,7 @@ struct FootprintCacheTests {
     /// the shared amount comes from the measurement, the tolerance from `phys`.
     @Test func sharedAmountComesFromMeasurementSnapshot() throws {
         var cache = FootprintCache()
-        cache.store(phys, Measurement(bytes: 150 * mib, processCount: 2, deduplicated: true, plainSum: 190 * mib),
+        cache.store(phys, Measurement(bytes: 150 * mib, processes: [1: 95 * mib, 2: 95 * mib], deduplicated: true),
                     at: now)
         #expect(try #require(cache.lookup(phys, now: now)).bytes == 160 * mib)
     }
@@ -120,7 +122,7 @@ struct FootprintCacheTests {
 
     @Test func storesOnlyFootprintResults() {
         var cache = FootprintCache()
-        cache.store(phys, Measurement(bytes: 200 * mib, processCount: 2, deduplicated: false, plainSum: 200 * mib),
+        cache.store(phys, Measurement(bytes: 200 * mib, processes: phys, deduplicated: false),
                     at: now)
         #expect(cache.lookup(phys, now: now) == nil)
     }

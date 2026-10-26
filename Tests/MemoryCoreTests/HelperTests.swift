@@ -14,6 +14,10 @@ struct HelperTests {
         #expect(result.rows.count == 2)
         #expect(result.groupCount >= 2)
         #expect(progressRows >= 2)
+        for row in result.rows {
+            #expect(row.processes.count >= row.processCount)
+            #expect(row.processes.compactMap(\.bytes).reduce(0, +) == row.plainSum)
+        }
     }
 
     @Test func rejectsOtherUsers() {

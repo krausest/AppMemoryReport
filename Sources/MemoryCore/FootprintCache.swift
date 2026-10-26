@@ -28,8 +28,7 @@ public struct FootprintCache: Sendable {
         let sum = phys.values.reduce(0, +)
         let change = Double(sum > entry.plainSum ? sum - entry.plainSum : entry.plainSum - sum)
         guard change <= Double(entry.plainSum) * Self.tolerance else { return nil }
-        return Measurement(bytes: sum - min(entry.shared, sum), processCount: phys.count, deduplicated: true,
-                           plainSum: sum)
+        return Measurement(bytes: sum - min(entry.shared, sum), processes: phys, deduplicated: true)
     }
 
     /// Remembers a `footprint` result; anything else (a plain sum) isn't worth caching.

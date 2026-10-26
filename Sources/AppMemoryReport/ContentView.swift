@@ -6,17 +6,29 @@ import UniformTypeIdentifiers
 struct ContentView: View {
     @Environment(MemoryModel.self) private var model
     @State private var search = ""
-    @State private var selection: AppUsage.ID?
+    @State private var selection: TableItem.ID?
+    @State private var sortOrder = [KeyPathComparator(\TableItem.bytes, order: .reverse)]
     /// Shows the Shared column.
     @State private var showsShared = false
     /// Only for the visibility of the User and Shared columns (an `if` in the table needs macOS 14.4).
-    @State private var columns = TableColumnCustomization<AppUsage>()
+    @State private var columns = TableColumnCustomization<TableItem>()
 
-    private var filteredRows: [AppUsage] {
-        search.isEmpty ? model.rows : model.rows.filter {
-            $0.name.localizedCaseInsensitiveContains(search)
-                || model.showsAllUsers && $0.userName.localizedCaseInsensitiveContains(search)
-        }
+    /// App rows with their processes as children, filtered and sorted. A search also finds
+    /// an app by the name of one of its processes.
+    private var items: [TableItem] {
+        let items = model.rows.map(TableItem.init)
+        let filtered = search.isEmpty ? items
+            : items.filter { $0.matches(search, includingUser: model.showsAllUsers) }
+        return TableItem.sorted(filtered, using: sortOrder)
+    }
+
+    /// The app of the selected row, which may be one of its processes.
+    private var selectedApp: AppUsage? {
+        guard let selection else { return nil }
+        return model.rows.first { $0.id == selection }
+            ?? model.rows.first { row in
+                selection.hasPrefix(row.id + "/") && Int(selection.dropFirst(row.id.count + 1)) != nil
+            }
     }
 
     var body: some View {
@@ -46,13 +58,16 @@ struct ContentView: View {
     }
 
     private var table: some View {
-        @Bindable var model = model
-        return Table(filteredRows, selection: $selection, sortOrder: $model.sortOrder, columnCustomization: $columns) {
+        let items = items
+        return Table(items, children: \.children, selection: $selection, sortOrder: $sortOrder,
+                     columnCustomization: $columns) {
             TableColumn(localized("App"), value: \.name) { row in
                 HStack(spacing: 6) {
-                    Image(nsImage: AppIcons.icon(for: row.appPath))
-                        .resizable()
-                        .frame(width: 16, height: 16)
+                    if !row.isProcess {
+                        Image(nsImage: AppIcons.icon(for: row.appPath))
+                            .resizable()
+                            .frame(width: 16, height: 16)
+                    }
                     Text(row.name)
                 }
             }
@@ -60,12 +75,48 @@ struct ContentView: View {
                 .width(min: 50, ideal: 80, max: 140)
                 .customizationID("user")
             TableColumn(localized("Processes"), value: \.processCount) { row in
-                Text(String(row.processCount))
+                Text(row.isProcess ? "" : String(row.processCount))
                     .monospacedDigit()
                     .frame(maxWidth: .infinity, alignment: .trailing)
             }
             .width(min: 60, ideal: 70, max: 90)
             TableColumn(localized("Memory"), value: \.bytes) { row in
+                if row.isProcess {
+                    processMemory(row)
+                } else {
+                    appMemory(row)
+                }
+            }
+            .width(min: 90, ideal: 105, max: 140)
+            TableColumn(localized("Shared"), value: \.shared) { row in
+                let measured = row.deduplicated && !row.preliminary
+                Text(row.isProcess ? "" : measured ? formatBytes(row.shared) : "–")
+                    .monospacedDigit()
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .help(row.isProcess ? ""
+                        : measured ? localized("Memory used by several of the app's processes, counted only once in “Memory”")
+                        : localized("Not measured (plain sum)"))
+            }
+            .width(min: 80, ideal: 95, max: 140)
+            .customizationID("shared")
+            TableColumn(localized("Attributed via"), value: \.attribution)
+                .width(min: 120, ideal: 240)
+        }
+        .onChange(of: model.showsAllUsers, initial: true) {
+            columns[visibility: "user"] = model.showsAllUsers ? .visible : .hidden
+        }
+        .onChange(of: showsShared, initial: true) {
+            columns[visibility: "shared"] = showsShared ? .visible : .hidden
+        }
+        .overlay {
+            if items.isEmpty && !search.isEmpty {
+                ContentUnavailableView(localized("No Results for “\(search)”"), systemImage: "magnifyingglass",
+                                       description: Text(localized("Check the spelling or try a new search.")))
+            }
+        }
+    }
+
+    private func appMemory(_ row: TableItem) -> some View {
                 HStack(spacing: 1) {
                     Text((row.preliminary ? "≈ " : "") + formatBytes(row.bytes))
                         .monospacedDigit()
@@ -78,39 +129,23 @@ struct ContentView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .trailing)
                 .help(row.preliminary ? localized("Preliminary: sum of the individual footprints, still being measured") : "")
-            }
-            .width(min: 90, ideal: 105, max: 140)
-            TableColumn(localized("Shared"), value: \.shared) { row in
-                let measured = row.deduplicated && !row.preliminary
-                Text(measured ? formatBytes(row.shared) : "–")
-                    .monospacedDigit()
-                    .frame(maxWidth: .infinity, alignment: .trailing)
-                    .help(measured ? localized("Memory used by several of the app's processes, counted only once in “Memory”")
-                        : localized("Not measured (plain sum)"))
-            }
-            .width(min: 80, ideal: 95, max: 140)
-            .customizationID("shared")
-        }
-        .onChange(of: model.sortOrder) { model.sortRows() }
-        .onChange(of: model.showsAllUsers, initial: true) {
-            columns[visibility: "user"] = model.showsAllUsers ? .visible : .hidden
-        }
-        .onChange(of: showsShared, initial: true) {
-            columns[visibility: "shared"] = showsShared ? .visible : .hidden
-        }
-        .overlay {
-            if filteredRows.isEmpty && !search.isEmpty {
-                ContentUnavailableView(localized("No Results for “\(search)”"), systemImage: "magnifyingglass",
-                                       description: Text(localized("Check the spelling or try a new search.")))
-            }
-        }
+    }
+
+    /// A single process's own value; the app row counts memory shared with its other processes once.
+    private func processMemory(_ row: TableItem) -> some View {
+        Text(row.measured ? formatBytes(row.bytes) : "–")
+            .monospacedDigit()
+            .contentTransition(.numericText(value: Double(row.bytes)))
+            .animation(.snappy, value: row.bytes)
+            .frame(maxWidth: .infinity, alignment: .trailing)
+            .help(localized("This process's own memory (phys_footprint). The app's row counts memory shared between its processes only once."))
     }
 
     /// The selected row's history, or system RAM without a selection.
     @ViewBuilder
     private var chart: some View {
-        if let selection, let row = model.rows.first(where: { $0.id == selection }) {
-            MemoryChart(title: row.name, value: formatBytes(row.bytes), samples: model.histories[selection] ?? [])
+        if let row = selectedApp {
+            MemoryChart(title: row.name, value: formatBytes(row.bytes), samples: model.histories[row.id] ?? [])
         } else {
             MemoryChart(title: localized("RAM used"), value: model.systemMemory.map {
                 localized("\(formatBytes($0.used)) of \(formatBytes($0.physical))")

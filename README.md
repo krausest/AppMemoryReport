@@ -62,7 +62,8 @@ The app ("App Memory Report", in German "Speicherverbrauch") shows the same per-
 
 - **Automatic refresh:** every 30 s by default; 5, 10, 30 or 60 s or manual can be picked in the toolbar.
 - **Top 30 only** ("Nur Top 30", in the options menu next to the interval): on by default. Only the 30 largest apps are measured and shown, which saves a lot of CPU.
-- **Search:** a field to filter rows by name.
+- **Search:** a field to filter rows by app or process name.
+- **Processes of an app:** expanding a row shows its processes, each with its own memory, nested along the path they were attributed through, and an "Attributed via" column that says why each one belongs to the app: started by its parent, macOS holds an app process *responsible* for it (e.g. the app's instance of the open/save panel or Quick Look service), it's in the app's bundle, or a built-in rule adds it (Safari's and iTerm2's background agents). The processes' values add up to the row's Memory plus Shared.
 - **Chart:** below the table, the memory of the selected app over its last 64 measurements, or system RAM in use when nothing is selected. Hovering shows the value at that time.
 - **Status bar:** a RAM gauge colored by memory pressure (green, yellow, red as in Activity Monitor) and the RAM in use. The number of apps is shown under the window title.
 

@@ -37,6 +37,14 @@ private func group(_ entries: [ProcessEntry], allUsers: Bool = false,
     return Dictionary(uniqueKeysWithValues: groups.map { ($0.name, Set($0.pids)) })
 }
 
+/// PID → why it belongs to its row.
+private func attributions(_ entries: [ProcessEntry], allUsers: Bool = false) -> [pid_t: ProcessAttribution] {
+    let table = Dictionary(uniqueKeysWithValues: entries.map { ($0.pid, $0) })
+    let groups = groupProcesses(table, includeAllUsers: allUsers, uid: me, appBundle: appBundle,
+                                arguments: { _ in nil })
+    return Dictionary(uniqueKeysWithValues: groups.flatMap(\.members).map { ($0.pid, $0.attribution) })
+}
+
 private let safari = process(100, "/Applications/Safari.app/Contents/MacOS/Safari")
 private let terminal = process(300, "/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal")
 private let iTerm = process(600, "/Applications/iTerm.app/Contents/MacOS/iTerm2")
@@ -162,6 +170,34 @@ struct GroupingTests {
                                     arguments: { _ in nil })
         #expect(Set(groups.map { "\($0.name) \($0.uid) \($0.pids.sorted())" })
             == ["Safari 501 [100, 101]", "Safari 502 [900]"])
+    }
+
+    @Test func attributionsSayWhyAProcessBelongsToItsRow() {
+        let chrome = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+        let helper = "/Applications/Google Chrome.app/Contents/Frameworks/Helper.app/Contents/MacOS/Helper"
+        let entries = [
+            safari,
+            process(101, "/System/Library/Frameworks/WebKit.framework/XPCServices/WebContent", responsible: 100),
+            process(120, "/System/Volumes/Preboot/Cryptexes/App/usr/libexec/SafariBookmarksSyncAgent"),
+            process(200, chrome),
+            process(201, helper, ppid: 200, responsible: 200),
+            terminal,
+            process(301, "/usr/bin/login", ppid: 300, uid: 0, tty: true),
+            process(302, "/bin/zsh", ppid: 301, responsible: 300, tty: true),
+            process(303, "/opt/homebrew/bin/node", ppid: 302, responsible: 300, tty: true),
+            process(950, "/usr/sbin/daemon"),
+        ]
+        #expect(attributions(entries) == [
+            100: .appBundle,
+            101: .responsible(pid: 100, name: "Safari"),
+            120: .satellite,
+            200: .appBundle,
+            201: .parent(pid: 200, name: "Google Chrome"),
+            300: .appBundle,
+            302: .parent(pid: 301, name: "login"),
+            303: .terminalCommand,
+            950: .independent,
+        ])
     }
 
     @Test func outermostAppPathSkipsDirectoriesThatArentBundles() {

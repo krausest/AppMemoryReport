@@ -8,11 +8,45 @@ private enum GroupKey: Hashable {
     case process(pid_t)
 }
 
+/// Why a process belongs to its group.
+public enum ProcessAttribution: Sendable, Codable, Hashable {
+    /// A root process inside the app's bundle.
+    case appBundle
+    /// A root process outside any app bundle.
+    case independent
+    /// A root because it was started from a terminal shell.
+    case terminalCommand
+    /// A root added to a running app by `satelliteRules`.
+    case satellite
+    /// Attributed through its parent process.
+    case parent(pid: pid_t, name: String)
+    /// Attributed through the process macOS holds responsible for it.
+    case responsible(pid: pid_t, name: String)
+
+    /// The process this one was attributed through, nil for roots. It may belong to
+    /// another user and then isn't part of the group.
+    public var via: pid_t? {
+        switch self {
+        case .parent(let pid, _), .responsible(let pid, _): pid
+        default: nil
+        }
+    }
+}
+
 /// One output row: the processes attributed to an app or root process.
 public struct ProcessGroup: Sendable {
+    public struct Member: Sendable {
+        public let pid: pid_t
+        /// Executable name, or "PID n" if the path is unknown.
+        public let name: String
+        public let uid: uid_t
+        public let attribution: ProcessAttribution
+    }
+
     /// Display name, unique among the groups of one `groupProcesses` call.
     public let name: String
-    public let pids: [pid_t]
+    public let members: [Member]
+    public var pids: [pid_t] { members.map(\.pid) }
     /// Owner of the group's root process(es), which may differ from some of its processes' owners.
     public let uid: uid_t
     /// Outermost `.app` bundle of the group, nil for processes outside any bundle.
@@ -78,6 +112,7 @@ func groupProcesses(
         }
     }
 
+    var satellites: Set<pid_t> = []
     for (root, key) in rootKeys {
         guard case .process = key, let entry = table[root],
               let rule = satelliteRules.first(where: {
@@ -85,12 +120,33 @@ func groupProcesses(
               })
         else { continue }
         rootKeys[root] = .app(bundleID: rule.bundleID, uid: entry.uid)
+        satellites.insert(root)
     }
 
-    var groups: [GroupKey: [pid_t]] = [:]
+    func processName(_ pid: pid_t) -> String {
+        guard let entry = table[pid], !entry.path.isEmpty else { return "PID \(pid)" }
+        return entry.executableName
+    }
+    func attributionOf(_ entry: ProcessEntry, root: pid_t) -> ProcessAttribution {
+        if root == entry.pid {
+            if satellites.contains(root) { return .satellite }
+            if attribution.isTerminalCommand(root) { return .terminalCommand }
+            if case .app = rootKeys[root] { return .appBundle }
+            return .independent
+        }
+        switch attribution.nextHop(of: entry) {
+        case .parent(let pid): return .parent(pid: pid, name: processName(pid))
+        case .responsible(let pid): return .responsible(pid: pid, name: processName(pid))
+        case nil: return .independent
+        }
+    }
+
+    var groups: [GroupKey: [ProcessGroup.Member]] = [:]
     for entry in table.values where includeAllUsers || entry.uid == uid {
         if let root = roots[entry.pid], let key = rootKeys[root] {
-            groups[key, default: []].append(entry.pid)
+            groups[key, default: []].append(ProcessGroup.Member(
+                pid: entry.pid, name: processName(entry.pid), uid: entry.uid,
+                attribution: attributionOf(entry, root: root)))
         }
     }
 
@@ -101,7 +157,7 @@ func groupProcesses(
     for key in groups.keys {
         nameCounts[NameKey(name: names[key]!, uid: owners[key]!), default: 0] += 1
     }
-    return groups.map { key, pids in
+    return groups.map { key, members in
         var name = names[key]!
         if nameCounts[NameKey(name: name, uid: owners[key]!)]! > 1 {
             switch key {
@@ -109,7 +165,7 @@ func groupProcesses(
             case .process(let pid): name += " [\(pid)]"
             }
         }
-        return ProcessGroup(name: name, pids: pids, uid: owners[key]!, appPath: appPaths[key])
+        return ProcessGroup(name: name, members: members, uid: owners[key]!, appPath: appPaths[key])
     }
 }
 
@@ -158,25 +214,38 @@ private struct Attribution {
                 break
             }
             chain.append(current)
-            if isTerminalShell(entry.ppid) {
+            guard let hop = nextHop(of: entry) else {
                 root = current
                 break
             }
-            let parentUsable = entry.ppid > 1 && table[entry.ppid] != nil
-            let responsibleUsable = !entry.isSelfResponsible && table[entry.responsiblePID] != nil
-            if parentUsable && (!responsibleUsable || isAncestor(entry.responsiblePID, of: current)) {
-                current = entry.ppid
-            } else if responsibleUsable {
-                current = entry.responsiblePID
-            } else {
-                root = current
-                break
-            }
+            current = hop.pid
         }
         for pid in chain {
             roots[pid] = root
         }
         return root
+    }
+
+    enum Hop {
+        case parent(pid_t)
+        case responsible(pid_t)
+
+        var pid: pid_t {
+            switch self {
+            case .parent(let pid), .responsible(let pid): pid
+            }
+        }
+    }
+
+    /// One step of the chain in `root(of:)`, nil if `entry` is a root.
+    mutating func nextHop(of entry: ProcessEntry) -> Hop? {
+        if isTerminalShell(entry.ppid) { return nil }
+        let parentUsable = entry.ppid > 1 && table[entry.ppid] != nil
+        let responsibleUsable = !entry.isSelfResponsible && table[entry.responsiblePID] != nil
+        if parentUsable && (!responsibleUsable || isAncestor(entry.responsiblePID, of: entry.pid)) {
+            return .parent(entry.ppid)
+        }
+        return responsibleUsable ? .responsible(entry.responsiblePID) : nil
     }
 
     /// Whether `pid` was started from a terminal, i.e. its parent is a terminal shell.

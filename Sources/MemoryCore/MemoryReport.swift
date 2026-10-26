@@ -18,11 +18,57 @@ public struct AppUsage: Identifiable, Sendable, Codable {
     public let preliminary: Bool
     /// Outermost `.app` bundle, nil for processes outside any bundle.
     public let appPath: String?
+    /// The processes attributed to this row and why, see `processTree`.
+    public let processes: [ProcessUsage]
 
     /// How much `plainSum` overcounts: memory mapped by several of the group's processes is in it
     /// once per process, in `bytes` only once.
     /// Only measured if `deduplicated` and not `preliminary`.
     public var shared: UInt64 { plainSum > bytes ? plainSum - bytes : 0 }
+
+    /// `processes` nested along their attribution: each process under the one it was
+    /// attributed through (`ProcessAttribution.via`), or at the top if that one isn't in the row.
+    public var processTree: [ProcessNode] {
+        let pids = Set(processes.map(\.pid))
+        var children: [pid_t: [ProcessUsage]] = [:]
+        var tops: [ProcessUsage] = []
+        for process in processes {
+            if let via = process.attribution.via, via != process.pid, pids.contains(via) {
+                children[via, default: []].append(process)
+            } else {
+                tops.append(process)
+            }
+        }
+        var placed: Set<pid_t> = []
+        func node(_ process: ProcessUsage) -> ProcessNode {
+            placed.insert(process.pid)
+            let below = (children[process.pid] ?? []).filter { !placed.contains($0.pid) }
+            return ProcessNode(process: process, children: below.map(node))
+        }
+        var tree = tops.map(node)
+        // A cycle of attributions has no top; show its members at the top instead of losing them.
+        for process in processes where !placed.contains(process.pid) {
+            tree.append(node(process))
+        }
+        return tree
+    }
+}
+
+/// One process of an `AppUsage`.
+public struct ProcessUsage: Identifiable, Sendable, Codable {
+    public var id: pid_t { pid }
+    public let pid: pid_t
+    public let name: String
+    public let uid: uid_t
+    public let attribution: ProcessAttribution
+    /// The process's `phys_footprint`, nil if it exited before it was measured.
+    public let bytes: UInt64?
+}
+
+/// A process with the processes attributed through it.
+public struct ProcessNode: Sendable {
+    public let process: ProcessUsage
+    public let children: [ProcessNode]
 }
 
 public struct MemoryReport: Sendable {
@@ -135,16 +181,20 @@ private struct Candidate: Sendable {
     }
 
     func usage(_ measurement: Measurement, preliminary: Bool = false) -> AppUsage {
-        AppUsage(name: group.name, uid: group.uid, processCount: measurement.processCount, bytes: measurement.bytes,
-                 deduplicated: measurement.deduplicated, plainSum: measurement.plainSum,
-                 preliminary: preliminary, appPath: group.appPath)
+        let processes = group.members.map {
+            ProcessUsage(pid: $0.pid, name: $0.name, uid: $0.uid, attribution: $0.attribution,
+                         bytes: measurement.processes[$0.pid])
+        }
+        return AppUsage(name: group.name, uid: group.uid, processCount: measurement.processCount,
+                        bytes: measurement.bytes, deduplicated: measurement.deduplicated,
+                        plainSum: measurement.plainSum, preliminary: preliminary, appPath: group.appPath,
+                        processes: processes)
     }
 }
 
 extension Measurement {
     static func plainSum(of phys: [pid_t: UInt64]) -> Measurement {
-        let sum = phys.values.reduce(0, +)
-        return Measurement(bytes: sum, processCount: phys.count, deduplicated: phys.count <= 1, plainSum: sum)
+        Measurement(bytes: phys.values.reduce(0, +), processes: phys, deduplicated: phys.count <= 1)
     }
 }
 

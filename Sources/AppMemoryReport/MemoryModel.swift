@@ -19,8 +19,8 @@ struct MemorySample: Identifiable {
 @Observable
 @MainActor
 final class MemoryModel {
+    /// Unsorted; the view sorts them.
     private(set) var rows: [AppUsage] = []
-    var sortOrder = [KeyPathComparator(\AppUsage.bytes, order: .reverse)]
     var interval = RefreshInterval.seconds30
     /// Measures only the largest apps, which saves most of the footprint runs.
     var topOnly = true
@@ -106,7 +106,7 @@ final class MemoryModel {
         rowsTopOnly = topOnly
         rowsAllUsers = helper != nil
         groupCount = result.groupCount
-        rows = result.rows.sorted(using: sortOrder)
+        rows = result.rows
         systemMemory = SystemMemory.current()
         recordSamples(result.rows, at: lastUpdate!)
     }
@@ -176,11 +176,6 @@ final class MemoryModel {
                 rows.append(update)
             }
         }
-        rows.sort(using: sortOrder)
-    }
-
-    func sortRows() {
-        rows.sort(using: sortOrder)
     }
 
     /// Measures once at start, then every `interval` after the previous measurement ended,

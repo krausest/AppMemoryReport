@@ -1,6 +1,16 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "%@ [%lld] is responsible" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ [%lld] ist verantwortlich"
+          }
+        }
+      }
+    },
     "%@ of %@" : {
       "localizations" : {
         "de" : {
@@ -111,12 +121,32 @@
         }
       }
     },
+    "Attributed via" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zugeordnet über"
+          }
+        }
+      }
+    },
     "Automatic refresh" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Automatische Aktualisierung"
+          }
+        }
+      }
+    },
+    "Belongs to the app (built-in rule)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gehört zur App (feste Regel)"
           }
         }
       }
@@ -141,6 +171,16 @@
         }
       }
     },
+    "Child process of %@ [%lld]" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kindprozess von %@ [%lld]"
+          }
+        }
+      }
+    },
     "Click to show all users' processes (requires an administrator password)" : {
       "localizations" : {
         "de" : {
@@ -157,6 +197,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Daten werden gesammelt…"
+          }
+        }
+      }
+    },
+    "In the app bundle" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Im App-Bundle"
+          }
+        }
+      }
+    },
+    "Independent process" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eigenständiger Prozess"
           }
         }
       }
@@ -391,6 +451,16 @@
         }
       }
     },
+    "Started in a terminal" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In einem Terminal gestartet"
+          }
+        }
+      }
+    },
     "The helper %@ wasn't found. Build it with “swift build”." : {
       "localizations" : {
         "de" : {
@@ -407,6 +477,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Der Hilfsprozess wurde beendet."
+          }
+        }
+      }
+    },
+    "This process's own memory (phys_footprint). The app's row counts memory shared between its processes only once." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eigener Speicher dieses Prozesses (phys_footprint). Die Zeile der App zählt Speicher, den sich ihre Prozesse teilen, nur einmal."
           }
         }
       }

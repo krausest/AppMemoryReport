@@ -3,12 +3,14 @@ import Foundation
 
 public struct Measurement: Sendable {
     public let bytes: UInt64
-    public let processCount: Int
+    /// Per-process `phys_footprint` this measurement is based on, from the same snapshot as
+    /// `bytes`, so `plainSum - bytes` is the memory deduplication removed.
+    public let processes: [pid_t: UInt64]
     /// true if shared memory between the processes is counted only once (via `footprint`).
     public let deduplicated: Bool
-    /// Sum of the per-process `phys_footprint` this measurement is based on (from the same
-    /// snapshot as `bytes`, so `plainSum - bytes` is the memory deduplication removed).
-    public let plainSum: UInt64
+
+    public var processCount: Int { processes.count }
+    public var plainSum: UInt64 { processes.values.reduce(0, +) }
 }
 
 /// Measures groups of PIDs with `/usr/bin/footprint`.
@@ -28,14 +30,14 @@ enum Footprint {
         let sum = phys.values.reduce(0, +)
         // Nothing is shared within a single process, so the kernel value is all we need.
         if phys.count <= 1 {
-            return Measurement(bytes: sum, processCount: phys.count, deduplicated: true, plainSum: sum)
+            return Measurement(bytes: sum, processes: phys, deduplicated: true)
         }
         // At most everything but the largest process could be shared. If that is small,
         // running footprint isn't worth it; the row is marked as not deduplicated.
         if sum - phys.values.max()! <= max(1 << 20, sum / 100) {
-            return Measurement(bytes: sum, processCount: phys.count, deduplicated: false, plainSum: sum)
+            return Measurement(bytes: sum, processes: phys, deduplicated: false)
         }
-        let plainSum = Measurement(bytes: sum, processCount: phys.count, deduplicated: false, plainSum: sum)
+        let plainSum = Measurement(bytes: sum, processes: phys, deduplicated: false)
 
         let jsonURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("app-memory-report-\(UUID().uuidString).json")
@@ -82,12 +84,12 @@ enum Footprint {
         if !Set(perProcess.keys).isSubset(of: requested) {
             let own = perProcess.filter { requested.contains($0.key) }
             let sum = own.values.reduce(0, +)
-            return Measurement(bytes: sum, processCount: own.count, deduplicated: false, plainSum: sum)
+            return Measurement(bytes: sum, processes: own, deduplicated: false)
         }
         // The excess isn't deduplicated, so cap the result at the plain sum. That also
         // guarantees a group never measures more than the sum it was ranked by.
         let sum = perProcess.values.reduce(0, +)
         let bytes = min(total + excess.values.reduce(0, +), sum)
-        return Measurement(bytes: bytes, processCount: perProcess.count, deduplicated: true, plainSum: sum)
+        return Measurement(bytes: bytes, processes: perProcess, deduplicated: true)
     }
 }
