@@ -12,6 +12,9 @@ struct TableItem: Identifiable {
     let uid: uid_t
     /// Whether this is a process row below an app.
     let isProcess: Bool
+    /// The process of a process row; for an app its main process (the first root in its
+    /// bundle, or any root), nil if it has no processes.
+    let pid: pid_t?
     /// The app's processes; 0 for a process row.
     let processCount: Int
     /// The app's (deduplicated) memory or the process's `phys_footprint`; 0 if unknown.
@@ -36,6 +39,9 @@ struct TableItem: Identifiable {
         name = app.name
         uid = app.uid
         isProcess = false
+        pid = (app.processes.first { $0.attribution == .appBundle }
+            ?? app.processes.first { $0.attribution.isRoot }
+            ?? app.processes.first)?.pid
         processCount = app.processCount
         bytes = app.bytes
         measured = true
@@ -55,6 +61,7 @@ struct TableItem: Identifiable {
         name = "\(process.name) [\(process.pid)]"
         uid = process.uid
         isProcess = true
+        pid = process.pid
         processCount = 0
         bytes = process.bytes ?? 0
         measured = process.bytes != nil

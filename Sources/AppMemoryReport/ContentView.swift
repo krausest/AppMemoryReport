@@ -12,6 +12,10 @@ struct ContentView: View {
     @State private var showsShared = false
     /// Only for the visibility of the User and Shared columns (an `if` in the table needs macOS 14.4).
     @State private var columns = TableColumnCustomization<TableItem>()
+    /// The process shown in the details sheet (double click on a row).
+    @State private var details: ProcessDetailsRequest?
+    /// Pointer position over the chart, nil when it is outside.
+    @State private var hoverDate: Date?
 
     /// App rows with their processes as children, filtered and sorted. A search also finds
     /// an app by the name of one of its processes.
@@ -102,6 +106,14 @@ struct ContentView: View {
             TableColumn(localized("Attributed via"), value: \.attribution)
                 .width(min: 120, ideal: 240)
         }
+        .contextMenu(forSelectionType: TableItem.ID.self) { ids in
+            if let id = ids.first {
+                Button(localized("Show Details…")) { showDetails(id, in: items) }
+            }
+        } primaryAction: { ids in
+            if let id = ids.first { showDetails(id, in: items) }
+        }
+        .sheet(item: $details) { ProcessDetailsView(request: $0) }
         .onChange(of: model.showsAllUsers, initial: true) {
             columns[visibility: "user"] = model.showsAllUsers ? .visible : .hidden
         }
@@ -114,6 +126,20 @@ struct ContentView: View {
                                        description: Text(localized("Check the spelling or try a new search.")))
             }
         }
+    }
+
+    /// Opens the details sheet for a row's process (an app row: its main process).
+    private func showDetails(_ id: TableItem.ID, in items: [TableItem]) {
+        func find(_ items: [TableItem]) -> TableItem? {
+            for item in items {
+                if item.id == id { return item }
+                if let found = find(item.children ?? []) { return found }
+            }
+            return nil
+        }
+        guard let item = find(items), let pid = item.pid else { return }
+        let name = item.isProcess ? item.name : "\(item.name) [\(pid)]"
+        details = ProcessDetailsRequest(name: name, userName: item.userName, details: ProcessDetails(pid: pid))
     }
 
     private func appMemory(_ row: TableItem) -> some View {
@@ -141,15 +167,25 @@ struct ContentView: View {
             .help(localized("This process's own memory (phys_footprint). The app's row counts memory shared between its processes only once."))
     }
 
-    /// The selected row's history, or system RAM without a selection.
+    /// The selected row's history, or system RAM without a selection. The RAM chart has the
+    /// largest apps beside it, at the hovered measurement or else the latest one.
     @ViewBuilder
     private var chart: some View {
         if let row = selectedApp {
-            MemoryChart(title: row.name, value: formatBytes(row.bytes), samples: model.histories[row.id] ?? [])
+            MemoryChart(title: row.name, value: formatBytes(row.bytes), samples: model.histories[row.id] ?? [],
+                        hoverDate: $hoverDate)
         } else {
-            MemoryChart(title: localized("RAM used"), value: model.systemMemory.map {
-                localized("\(formatBytes($0.used)) of \(formatBytes($0.physical))")
-            } ?? "", samples: model.ramHistory)
+            HStack(spacing: 0) {
+                MemoryChart(title: localized("RAM used"), value: model.systemMemory.map {
+                    localized("\(formatBytes($0.used)) of \(formatBytes($0.physical))")
+                } ?? "", samples: model.ramHistory, hoverDate: $hoverDate)
+                if let date = (MemoryChart.nearest(to: hoverDate, in: model.ramHistory) ?? model.ramHistory.last)?.date {
+                    Divider()
+                        .environment(\.colorScheme, .light)
+                    LargestAppsPane(apps: model.largestApps(at: date, count: 6))
+                        .frame(width: 240)
+                }
+            }
         }
     }
 
@@ -207,6 +243,8 @@ struct ContentView: View {
                     .gaugeStyle(.linearCapacity)
                     .tint(memory.pressure.color)
                     .frame(width: 90)
+                    // On macOS the gauge is an NSLevelIndicator, which can be dragged by default.
+                    .allowsHitTesting(false)
                 Text(localized("RAM used \(formatBytes(memory.used)) of \(formatBytes(memory.physical))"))
                     .monospacedDigit()
                     .contentTransition(.numericText(value: Double(memory.used)))
@@ -263,7 +301,7 @@ extension AppUsage {
 }
 
 @MainActor
-private enum AppIcons {
+enum AppIcons {
     private static var cache: [String: NSImage] = [:]
     private static let executable = NSWorkspace.shared.icon(for: .unixExecutable)
 

@@ -23,6 +23,9 @@ public enum ProcessAttribution: Sendable, Codable, Hashable {
     /// Attributed through the process macOS holds responsible for it.
     case responsible(pid: pid_t, name: String)
 
+    /// Whether the process is the root of its attribution chain.
+    public var isRoot: Bool { via == nil }
+
     /// The process this one was attributed through, nil for roots. It may belong to
     /// another user and then isn't part of the group.
     public var via: pid_t? {

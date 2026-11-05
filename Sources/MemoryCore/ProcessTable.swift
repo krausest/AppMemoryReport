@@ -97,11 +97,34 @@ enum ProcessTable {
         return (pid_t(short.pbsi_ppid), short.pbsi_uid, short.pbsi_flags)
     }
 
-    private static func executablePath(of pid: pid_t) -> String? {
+    static func executablePath(of pid: pid_t) -> String? {
         var buffer = [UInt8](repeating: 0, count: 4 * Int(MAXPATHLEN))
         let length = proc_pidpath(pid, &buffer, UInt32(buffer.count))
         guard length > 0 else { return nil }
         return String(decoding: buffer.prefix(Int(length)), as: UTF8.self)
+    }
+}
+
+/// Executable and command line of a process, read live (e.g. for a details view).
+public struct ProcessDetails: Sendable {
+    public enum State: Sendable {
+        case running(path: String, arguments: [String]?)
+        /// The process has exited.
+        case exited
+    }
+
+    public let pid: pid_t
+    /// `arguments` is nil if the command line can't be read, e.g. of another user's
+    /// process without root.
+    public let state: State
+
+    public init(pid: pid_t) {
+        self.pid = pid
+        if let path = ProcessTable.executablePath(of: pid) {
+            state = .running(path: path, arguments: ProcessTable.arguments(of: pid))
+        } else {
+            state = .exited
+        }
     }
 }
 

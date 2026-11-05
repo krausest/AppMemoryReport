@@ -121,6 +121,16 @@
         }
       }
     },
+    "Arguments" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Argumente"
+          }
+        }
+      }
+    },
     "Attributed via" : {
       "localizations" : {
         "de" : {
@@ -191,12 +201,42 @@
         }
       }
     },
+    "Close" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schließen"
+          }
+        }
+      }
+    },
     "Collecting data…" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Daten werden gesammelt…"
+          }
+        }
+      }
+    },
+    "Copy Command Line" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Befehlszeile kopieren"
+          }
+        }
+      }
+    },
+    "Executable" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ausführbare Datei"
           }
         }
       }
@@ -227,6 +267,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Intervall"
+          }
+        }
+      }
+    },
+    "Largest apps" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Größte Apps"
           }
         }
       }
@@ -441,6 +491,16 @@
         }
       }
     },
+    "Show Details…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Details anzeigen …"
+          }
+        }
+      }
+    },
     "Showing all users' processes. Click to show only your own." : {
       "localizations" : {
         "de" : {
@@ -461,6 +521,16 @@
         }
       }
     },
+    "The arguments can't be read (other users' processes need root)." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Argumente können nicht gelesen werden (Prozesse anderer Benutzer erfordern Root-Rechte)."
+          }
+        }
+      }
+    },
     "The helper %@ wasn't found. Build it with “swift build”." : {
       "localizations" : {
         "de" : {
@@ -477,6 +547,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Der Hilfsprozess wurde beendet."
+          }
+        }
+      }
+    },
+    "The process has exited." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Prozess wurde beendet."
           }
         }
       }

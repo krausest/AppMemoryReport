@@ -11,11 +11,14 @@ struct MemoryChart: View {
     let value: String
     let samples: [MemorySample]
     /// Position of the pointer over the plot, nil when it is outside.
-    @State private var hoverDate: Date?
+    @Binding var hoverDate: Date?
 
-    private var hovered: MemorySample? {
-        guard let hoverDate else { return nil }
-        return samples.min { abs($0.date.timeIntervalSince(hoverDate)) < abs($1.date.timeIntervalSince(hoverDate)) }
+    private var hovered: MemorySample? { Self.nearest(to: hoverDate, in: samples) }
+
+    /// The sample closest to `date`.
+    static func nearest(to date: Date?, in samples: [MemorySample]) -> MemorySample? {
+        guard let date else { return nil }
+        return samples.min { abs($0.date.timeIntervalSince(date)) < abs($1.date.timeIntervalSince(date)) }
     }
 
     var body: some View {
@@ -53,18 +56,28 @@ struct MemoryChart: View {
 
     private var chart: some View {
         let (domain, ticks) = Self.scale(samples.map { Double($0.bytes) })
+        let segments = Self.segments(samples)
+        let segmentSizes = Dictionary(segments.map { ($0, 1) }, uniquingKeysWith: +)
         return Chart {
-            ForEach(samples) { sample in
+            ForEach(Array(zip(samples, segments)), id: \.0.id) { sample, segment in
                 AreaMark(x: .value("Time", sample.date),
                          yStart: .value("Memory", domain.lowerBound),
-                         yEnd: .value("Memory", Double(sample.bytes)))
+                         yEnd: .value("Memory", Double(sample.bytes)),
+                         series: .value("Segment", segment))
                     .foregroundStyle(LinearGradient(colors: [blue.opacity(0.45), blue.opacity(0.02)],
                                                     startPoint: .top, endPoint: .bottom))
                     .interpolationMethod(.monotone)
-                LineMark(x: .value("Time", sample.date), y: .value("Memory", Double(sample.bytes)))
+                LineMark(x: .value("Time", sample.date), y: .value("Memory", Double(sample.bytes)),
+                         series: .value("Segment", segment))
                     .foregroundStyle(blue)
                     .lineStyle(StrokeStyle(lineWidth: 2))
                     .interpolationMethod(.monotone)
+                // A lone sample between two pauses has no line to show it.
+                if segmentSizes[segment] == 1 {
+                    PointMark(x: .value("Time", sample.date), y: .value("Memory", Double(sample.bytes)))
+                        .foregroundStyle(blue)
+                        .symbolSize(20)
+                }
             }
             if let hovered {
                 RuleMark(x: .value("Time", hovered.date))
@@ -100,6 +113,20 @@ struct MemoryChart: View {
             }
         }
         .padding(.top, 6)  // keeps the top y label clear of the header
+    }
+
+    /// Line segment of each sample. A pause in the measurements (window hidden, Mac asleep,
+    /// manual refresh) starts a new one, so the line doesn't bridge it with a made-up slope.
+    /// A pause is a gap of more than three times the usual spacing, and at least a minute.
+    static func segments(_ samples: [MemorySample]) -> [Int] {
+        let gaps = zip(samples, samples.dropFirst()).map { $1.date.timeIntervalSince($0.date) }
+        guard !gaps.isEmpty else { return samples.map { _ in 0 } }
+        let limit = max(3 * gaps.sorted()[gaps.count / 2], 60)
+        var segment = 0
+        return [0] + gaps.map { gap in
+            if gap > limit { segment += 1 }
+            return segment
+        }
     }
 
     /// Y range and gridlines at round MB steps (1, 2 or 5 × 10ⁿ). Not from zero: changes of

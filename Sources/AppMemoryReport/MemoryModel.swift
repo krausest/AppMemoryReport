@@ -16,6 +16,14 @@ struct MemorySample: Identifiable {
     var id: Date { date }
 }
 
+/// An app with its value at one point of the history, for the largest-apps pane.
+struct RankedApp: Identifiable {
+    let id: AppUsage.ID
+    let name: String
+    let appPath: String?
+    let bytes: UInt64
+}
+
 @Observable
 @MainActor
 final class MemoryModel {
@@ -31,13 +39,15 @@ final class MemoryModel {
     private(set) var lastDuration: Duration?
     /// System-wide RAM in use, read after each measurement.
     private(set) var systemMemory: SystemMemory?
-    /// The last `historyLength` measured values per row, oldest first.
+    /// Measured values per row from the last `historyWindow`, oldest first.
     private(set) var histories: [AppUsage.ID: [MemorySample]] = [:]
-    /// The last `historyLength` values of `systemMemory.used`, oldest first.
+    /// Name and bundle of every row in `histories`, kept after the app quits.
+    private var historyApps: [AppUsage.ID: (name: String, appPath: String?)] = [:]
+    /// Values of `systemMemory.used` from the last `historyWindow`, oldest first.
     private(set) var ramHistory: [MemorySample] = []
-    static let historyLength = 64
-    /// Histories of rows that are no longer measured are dropped after this long.
-    private static let historyRetention: TimeInterval = 30 * 60
+    /// How far the histories (and so the chart) reach back. Measurements pause while no
+    /// window is visible or the Mac sleeps; older samples are dropped by the next one.
+    static let historyWindow: TimeInterval = 30 * 60
     /// End of the last measurement; the next automatic one starts `interval` later.
     private var lastFinished: ContinuousClock.Instant?
     /// `topOnly` of the shown rows; a mismatch triggers a new measurement.
@@ -113,18 +123,33 @@ final class MemoryModel {
 
     /// Appends the final values of a measurement (never preliminary ones) to the histories.
     private func recordSamples(_ measured: [AppUsage], at date: Date) {
-        func append(_ bytes: UInt64, to history: inout [MemorySample]) {
-            history.append(MemorySample(date: date, bytes: bytes))
-            history.removeFirst(max(0, history.count - Self.historyLength))
-        }
+        let start = date.addingTimeInterval(-Self.historyWindow)
         for row in measured {
-            append(row.bytes, to: &histories[row.id, default: []])
+            histories[row.id, default: []].append(MemorySample(date: date, bytes: row.bytes))
+            historyApps[row.id] = (row.name, row.appPath)
         }
         if let systemMemory {
-            append(systemMemory.used, to: &ramHistory)
+            ramHistory.append(MemorySample(date: date, bytes: systemMemory.used))
         }
-        // Short-lived rows (e.g. terminal commands) would otherwise pile up.
-        histories = histories.filter { date.timeIntervalSince($0.value.last!.date) < Self.historyRetention }
+        ramHistory.removeAll { $0.date < start }
+        // Rows no longer measured (quit apps, finished terminal commands) drop out entirely.
+        histories = histories.compactMapValues { samples in
+            let recent = samples.filter { $0.date >= start }
+            return recent.isEmpty ? nil : recent
+        }
+        historyApps = historyApps.filter { histories[$0.key] != nil }
+    }
+
+    /// The `count` largest apps measured at `date`, a measurement's date from the histories
+    /// (all rows of a measurement and the RAM history share it).
+    func largestApps(at date: Date, count: Int) -> [RankedApp] {
+        histories.compactMap { id, samples in
+            guard let sample = samples.last(where: { $0.date == date }), let app = historyApps[id] else { return nil }
+            return RankedApp(id: id, name: app.name, appPath: app.appPath, bytes: sample.bytes)
+        }
+        .sorted { $0.bytes > $1.bytes }
+        .prefix(count)
+        .map { $0 }
     }
 
     /// Shows all users' processes (starting the root helper, which asks for an administrator
@@ -161,6 +186,7 @@ final class MemoryModel {
         liveRun = nil
         rows = []
         histories = [:]
+        historyApps = [:]
         lastUpdate = nil
     }
 
