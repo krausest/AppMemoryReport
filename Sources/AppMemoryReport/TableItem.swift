@@ -25,6 +25,11 @@ struct TableItem: Identifiable {
     let deduplicated: Bool
     /// The app's Shared value; 0 for a process row.
     let shared: UInt64
+    /// Part of `bytes` the compressor holds, at its original size.
+    let compressed: UInt64
+    /// `bytes` with `compressed` counted at `compressionRatio` (see `AppUsage.estimatedRAM`).
+    let estimatedRAM: UInt64
+    let compressionRatio: Double
     let appPath: String?
     /// Why the process belongs to the app; empty for an app row.
     let attribution: String
@@ -48,6 +53,9 @@ struct TableItem: Identifiable {
         preliminary = app.preliminary
         deduplicated = app.deduplicated
         shared = app.shared
+        compressed = app.compressed
+        estimatedRAM = app.estimatedRAM
+        compressionRatio = app.compressionRatio
         appPath = app.appPath
         attribution = ""
         // A single process is the row itself.
@@ -68,6 +76,10 @@ struct TableItem: Identifiable {
         preliminary = false
         deduplicated = true
         shared = 0
+        compressed = process.compressed
+        estimatedRAM = MemoryCore.estimatedRAM(bytes: bytes, compressed: process.compressed,
+                                               compressionRatio: app.compressionRatio)
+        compressionRatio = app.compressionRatio
         appPath = nil
         attribution = process.attribution.label
         children = node.children.isEmpty ? nil : node.children.map { TableItem($0, of: app) }

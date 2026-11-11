@@ -20,6 +20,17 @@ public struct AppUsage: Identifiable, Sendable, Codable {
     public let appPath: String?
     /// The processes attributed to this row and why, see `processTree`.
     public let processes: [ProcessUsage]
+    /// Part of `bytes` the compressor holds, counted at its original size (at most `bytes`).
+    public let compressed: UInt64
+    /// System-wide RAM per byte the compressor holds when the row was measured, see
+    /// `SystemMemory.compressionRatio`.
+    public let compressionRatio: Double
+
+    /// `bytes` with `compressed` counted at `compressionRatio`: roughly the physical RAM the
+    /// group occupies (see `estimatedRAM(bytes:compressed:compressionRatio:)`).
+    public var estimatedRAM: UInt64 {
+        MemoryCore.estimatedRAM(bytes: bytes, compressed: compressed, compressionRatio: compressionRatio)
+    }
 
     /// How much `plainSum` overcounts: memory mapped by several of the group's processes is in it
     /// once per process, in `bytes` only once.
@@ -63,6 +74,8 @@ public struct ProcessUsage: Identifiable, Sendable, Codable {
     public let attribution: ProcessAttribution
     /// The process's `phys_footprint`, nil if it exited before it was measured.
     public let bytes: UInt64?
+    /// Part of `bytes` the compressor holds, at its original size (`ProcessTable.compressed`).
+    public let compressed: UInt64
 }
 
 /// A process with the processes attributed through it.
@@ -105,7 +118,9 @@ public struct MemoryReport: Sendable {
         let groups = groupProcesses(ProcessTable.snapshot(), includeAllUsers: includeAllUsers)
         // The kernel's per-process values are cheap. They rank the groups, are checked
         // against the cache and make up the preliminary rows.
-        let candidates = groups.map(Candidate.init).filter { !$0.phys.isEmpty }
+        // Read once, so all rows of a run use the same ratio.
+        let ratio = SystemMemory.current()?.compressionRatio ?? 1
+        let candidates = groups.map { Candidate($0, compressionRatio: ratio) }.filter { !$0.phys.isEmpty }
             .sorted { $0.plainSum > $1.plainSum }
         let shown = min(limit ?? candidates.count, candidates.count)
         progress?(candidates.prefix(shown).map { $0.usage(.plainSum(of: $0.phys), preliminary: true) })
@@ -171,24 +186,35 @@ private struct Candidate: Sendable {
     let group: ProcessGroup
     let phys: [pid_t: UInt64]
     let plainSum: UInt64
+    /// `ProcessTable.compressed` of each live process.
+    let compressed: [pid_t: UInt64]
+    let compressionRatio: Double
 
-    init(_ group: ProcessGroup) {
+    init(_ group: ProcessGroup, compressionRatio: Double) {
         self.group = group
         phys = Dictionary(uniqueKeysWithValues: group.pids.compactMap { pid in
             ProcessTable.physFootprint(of: pid).map { (pid, $0) }
         })
         plainSum = phys.values.reduce(0, +)
+        compressed = Dictionary(uniqueKeysWithValues: phys.keys.map { ($0, ProcessTable.compressed(of: $0)) })
+        self.compressionRatio = compressionRatio
     }
 
     func usage(_ measurement: Measurement, preliminary: Bool = false) -> AppUsage {
-        let processes = group.members.map {
-            ProcessUsage(pid: $0.pid, name: $0.name, uid: $0.uid, attribution: $0.attribution,
-                         bytes: measurement.processes[$0.pid])
+        // Read before footprint ran, so clamp to the values measured later.
+        func compressed(_ pid: pid_t, bytes: UInt64) -> UInt64 { min(self.compressed[pid] ?? 0, bytes) }
+        let processes = group.members.map { member in
+            let bytes = measurement.processes[member.pid]
+            return ProcessUsage(pid: member.pid, name: member.name, uid: member.uid,
+                                attribution: member.attribution, bytes: bytes,
+                                compressed: bytes.map { compressed(member.pid, bytes: $0) } ?? 0)
         }
+        let compressedSum = measurement.processes.reduce(0) { $0 + compressed($1.key, bytes: $1.value) }
         return AppUsage(name: group.name, uid: group.uid, processCount: measurement.processCount,
                         bytes: measurement.bytes, deduplicated: measurement.deduplicated,
                         plainSum: measurement.plainSum, preliminary: preliminary, appPath: group.appPath,
-                        processes: processes)
+                        processes: processes, compressed: min(compressedSum, measurement.bytes),
+                        compressionRatio: compressionRatio)
     }
 }
 
@@ -196,6 +222,14 @@ extension Measurement {
     static func plainSum(of phys: [pid_t: UInt64]) -> Measurement {
         Measurement(bytes: phys.values.reduce(0, +), processes: phys, deduplicated: phys.count <= 1)
     }
+}
+
+/// `bytes` with its `compressed` part (at original size, at most `bytes`) counted at
+/// `compressionRatio` (RAM per byte held, system-wide) instead: an estimate of the physical RAM,
+/// since the kernel doesn't record how well a single process's pages compress.
+public func estimatedRAM(bytes: UInt64, compressed: UInt64, compressionRatio: Double) -> UInt64 {
+    let compressed = min(compressed, bytes)
+    return bytes - compressed + UInt64((Double(compressed) * compressionRatio).rounded())
 }
 
 /// Measures `ranked` (sorted by `bound`, descending) in rounds of `batch` items until the

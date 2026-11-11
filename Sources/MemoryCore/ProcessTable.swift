@@ -49,6 +49,25 @@ enum ProcessTable {
         return result == 0 ? info.ri_phys_footprint : nil
     }
 
+    /// The part of `pid`'s footprint the compressor holds (compressed, or swapped out with its
+    /// segment), counted at the original size: the kernel's `internal_compressed` ledger, as in
+    /// `top`'s CMPRS column. How small it is in the compressor isn't recorded per process.
+    /// 0 if the task can't be read (other users' processes without root).
+    static func compressed(of pid: pid_t) -> UInt64 {
+        var task: mach_port_t = 0
+        // A name port suffices for TASK_VM_INFO and, unlike task_for_pid, needs no entitlement.
+        guard task_name_for_pid(mach_task_self_, pid, &task) == KERN_SUCCESS else { return 0 }
+        defer { mach_port_deallocate(mach_task_self_, task) }
+        var info = task_vm_info_data_t()
+        var count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<natural_t>.size)
+        let result = withUnsafeMutablePointer(to: &info) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                task_info(task, task_flavor_t(TASK_VM_INFO), $0, &count)
+            }
+        }
+        return result == KERN_SUCCESS ? info.compressed : 0
+    }
+
     /// Command line (`argv`) of `pid`. Programs can rewrite it, e.g. npm shows up as
     /// `["npm run dev", "", ""]` instead of `node …/npm-cli.js run dev`.
     static func arguments(of pid: pid_t) -> [String]? {

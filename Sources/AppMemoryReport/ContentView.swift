@@ -8,9 +8,9 @@ struct ContentView: View {
     @State private var search = ""
     @State private var selection: TableItem.ID?
     @State private var sortOrder = [KeyPathComparator(\TableItem.bytes, order: .reverse)]
-    /// Shows the Shared column.
+    /// Shows the Shared and Est. RAM columns and the compressor in the status bar ("Advanced").
     @State private var showsShared = false
-    /// Only for the visibility of the User and Shared columns (an `if` in the table needs macOS 14.4).
+    /// Only for the visibility of the User, Shared and Est. RAM columns (an `if` in the table needs macOS 14.4).
     @State private var columns = TableColumnCustomization<TableItem>()
     /// The process shown in the details sheet (double click on a row).
     @State private var details: ProcessDetailsRequest?
@@ -103,6 +103,15 @@ struct ContentView: View {
             }
             .width(min: 80, ideal: 95, max: 140)
             .customizationID("shared")
+            TableColumn(localized("Est. RAM"), value: \.estimatedRAM) { row in
+                Text(row.measured ? formatBytes(row.estimatedRAM) : "–")
+                    .monospacedDigit()
+                    .foregroundStyle(row.preliminary ? .secondary : .primary)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .help(row.measured ? estimatedRAMHelp(row) : "")
+            }
+            .width(min: 90, ideal: 105, max: 140)
+            .customizationID("ram")
             TableColumn(localized("Attributed via"), value: \.attribution)
                 .width(min: 120, ideal: 240)
         }
@@ -119,6 +128,7 @@ struct ContentView: View {
         }
         .onChange(of: showsShared, initial: true) {
             columns[visibility: "shared"] = showsShared ? .visible : .hidden
+            columns[visibility: "ram"] = showsShared ? .visible : .hidden
         }
         .overlay {
             if items.isEmpty && !search.isEmpty {
@@ -126,6 +136,14 @@ struct ContentView: View {
                                        description: Text(localized("Check the spelling or try a new search.")))
             }
         }
+    }
+
+    private func estimatedRAMHelp(_ row: TableItem) -> String {
+        guard row.compressed > 0 else {
+            return localized("Estimated physical RAM: none of this memory is compressed, so this equals “Memory”.")
+        }
+        let ratio = formatFactor(row.compressionRatio)
+        return localized("Estimated physical RAM. “Memory” counts the \(formatBytes(row.compressed)) that macOS has compressed at their original size, as Activity Monitor does. Here they count at the system-wide compression ratio instead (currently \(ratio) : 1), roughly the RAM they take up in the compressor. The kernel doesn't record how well a single process's memory compresses, so this assumes the average: text and empty pages compress much better, images and code much worse.")
     }
 
     /// Opens the details sheet for a row's process (an app row: its main process).
@@ -142,13 +160,13 @@ struct ContentView: View {
         details = ProcessDetailsRequest(name: name, userName: item.userName, details: ProcessDetails(pid: pid))
     }
 
+    // No numericText transition in the table cells: its blurred in-between frames fill
+    // CoreGraphics' glyph cache, ~55 MB with all rows shown.
     private func appMemory(_ row: TableItem) -> some View {
                 HStack(spacing: 1) {
                     Text((row.preliminary ? "≈ " : "") + formatBytes(row.bytes))
                         .monospacedDigit()
                         .foregroundStyle(row.preliminary ? .secondary : .primary)
-                        .contentTransition(.numericText(value: Double(row.bytes)))
-                        .animation(.snappy, value: row.bytes)
                     Text("*")
                         .opacity(row.deduplicated || row.preliminary ? 0 : 1)
                         .help(localized("Plain sum of the individual footprints (footprint unavailable, or skipped because hardly any memory can be shared): shared memory may be counted more than once."))
@@ -161,8 +179,6 @@ struct ContentView: View {
     private func processMemory(_ row: TableItem) -> some View {
         Text(row.measured ? formatBytes(row.bytes) : "–")
             .monospacedDigit()
-            .contentTransition(.numericText(value: Double(row.bytes)))
-            .animation(.snappy, value: row.bytes)
             .frame(maxWidth: .infinity, alignment: .trailing)
             .help(localized("This process's own memory (phys_footprint). The app's row counts memory shared between its processes only once."))
     }
@@ -249,6 +265,16 @@ struct ContentView: View {
                     .monospacedDigit()
                     .contentTransition(.numericText(value: Double(memory.used)))
                     .animation(.snappy, value: memory.used)
+                if showsShared {
+                    Text("·")
+                    Text(localized("Compressor \(formatBytes(memory.compressorOccupied))"))
+                        .monospacedDigit()
+                    if memory.compressorStored > 0 {
+                        Text("·")
+                        Text(localized("Factor \(formatFactor(memory.compressionRatio)) : 1"))
+                            .monospacedDigit()
+                    }
+                }
             }
             Spacer()
             Text(lastMeasurementText)
@@ -259,7 +285,15 @@ struct ContentView: View {
         .padding(.vertical, 5)
         .background(.bar)
         .help((model.systemMemory.map { $0.pressure.label + "\n" } ?? "")
-            + localized("RAM used: Activity Monitor's “Memory Used”, the physical memory actually occupied by all users' apps, the kernel and the compressor. The rows count compressed memory at its original size, so they can add up to more."))
+            + localized("RAM used: Activity Monitor's “Memory Used”, the physical memory actually occupied by all users' apps, the kernel and the compressor. The rows count compressed memory at its original size, so they can add up to more.")
+            + ((showsShared ? model.systemMemory : nil).map {
+                "\n" + localized("Compressor: the RAM occupied by compressed memory, part of “RAM used”. It holds \(formatBytes($0.compressorStored)) at their original size, on average \(formatFactor($0.compressionRatio)) times as much (the factor “Est. RAM” uses).")
+            } ?? ""))
+    }
+
+    /// `compressionRatio` (RAM per byte held) as a compression factor, e.g. 0.5 → "2.0".
+    private func formatFactor(_ ratio: Double) -> String {
+        (1 / ratio).formatted(.number.precision(.fractionLength(1)))
     }
 
     private var subtitle: String {

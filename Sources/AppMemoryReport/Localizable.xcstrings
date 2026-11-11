@@ -221,6 +221,26 @@
         }
       }
     },
+    "Compressor %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kompressor %@"
+          }
+        }
+      }
+    },
+    "Compressor: the RAM occupied by compressed memory, part of “RAM used”. It holds %@ at their original size, on average %@ times as much (the factor “Est. RAM” uses)." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kompressor: der RAM, den komprimierter Speicher belegt, Teil von „RAM belegt“. Er enthält %1$@ in ihrer ursprünglichen Größe, im Schnitt %2$@-mal so viel (der Faktor, den „RAM geschätzt“ verwendet)."
+          }
+        }
+      }
+    },
     "Copy Command Line" : {
       "localizations" : {
         "de" : {
@@ -231,12 +251,52 @@
         }
       }
     },
+    "Est. RAM" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "RAM geschätzt"
+          }
+        }
+      }
+    },
+    "Estimated physical RAM. “Memory” counts the %@ that macOS has compressed at their original size, as Activity Monitor does. Here they count at the system-wide compression ratio instead (currently %@ : 1), roughly the RAM they take up in the compressor. The kernel doesn't record how well a single process's memory compresses, so this assumes the average: text and empty pages compress much better, images and code much worse." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geschätzter physischer Arbeitsspeicher. „Speicher“ zählt die %1$@, die macOS komprimiert hat, in ihrer ursprünglichen Größe, wie die Aktivitätsanzeige. Hier zählen sie stattdessen mit dem systemweiten Kompressionsverhältnis (derzeit %2$@ : 1), also etwa mit dem RAM, den sie im Kompressor belegen. Der Kernel erfasst nicht, wie gut sich der Speicher eines einzelnen Prozesses komprimieren lässt, daher wird der Durchschnitt angenommen: Text und leere Seiten lassen sich viel besser komprimieren, Bilder und Code viel schlechter."
+          }
+        }
+      }
+    },
+    "Estimated physical RAM: none of this memory is compressed, so this equals “Memory”." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geschätzter physischer Arbeitsspeicher: Von diesem Speicher ist nichts komprimiert, daher entspricht der Wert „Speicher“."
+          }
+        }
+      }
+    },
     "Executable" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ausführbare Datei"
+          }
+        }
+      }
+    },
+    "Factor %@ : 1" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Faktor %@ : 1"
           }
         }
       }

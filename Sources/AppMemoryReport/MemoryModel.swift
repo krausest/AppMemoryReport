@@ -119,6 +119,10 @@ final class MemoryModel {
         rows = result.rows
         systemMemory = SystemMemory.current()
         recordSamples(result.rows, at: lastUpdate!)
+        // A measurement churns through many short-lived allocations (process table, progress
+        // updates, SwiftUI diffs). malloc keeps the freed pages dirty, and they would count
+        // toward the app's own footprint until reused; hand them back to the system.
+        malloc_zone_pressure_relief(nil, 0)
     }
 
     /// Appends the final values of a measurement (never preliminary ones) to the histories.

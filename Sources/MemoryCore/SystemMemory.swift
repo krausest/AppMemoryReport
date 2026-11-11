@@ -17,6 +17,13 @@ public struct SystemMemory: Sendable {
     public let used: UInt64
     public let physical: UInt64
     public let pressure: Pressure
+    /// RAM the compressor occupies ("Pages occupied by compressor" in `vm_stat`), part of `used`.
+    public let compressorOccupied: UInt64
+    /// What the compressor holds, at its original size ("Pages stored in compressor").
+    public let compressorStored: UInt64
+    /// RAM the compressor occupies per byte it holds (at original size), e.g. 0.5 for 2 : 1.
+    /// 1 while it holds nothing.
+    public let compressionRatio: Double
 
     /// Reads the kernel's page counters; nil if that fails.
     public static func current() -> SystemMemory? {
@@ -50,5 +57,9 @@ public struct SystemMemory: Sendable {
         used = (app + UInt64(stats.wire_count) + UInt64(stats.compressor_page_count)) * pageSize
         self.physical = physical
         self.pressure = pressure
+        compressorOccupied = UInt64(stats.compressor_page_count) * pageSize
+        compressorStored = UInt64(stats.total_uncompressed_pages_in_compressor) * pageSize
+        compressionRatio = compressorStored > 0
+            ? min(1, Double(compressorOccupied) / Double(compressorStored)) : 1
     }
 }

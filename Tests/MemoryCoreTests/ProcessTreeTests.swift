@@ -6,8 +6,8 @@ private func usage(_ processes: [(pid_t, ProcessAttribution)]) -> AppUsage {
     AppUsage(name: "App", uid: 501, processCount: processes.count, bytes: 0, deduplicated: true, plainSum: 0,
              preliminary: false, appPath: nil,
              processes: processes.map {
-                 ProcessUsage(pid: $0.0, name: "p\($0.0)", uid: 501, attribution: $0.1, bytes: 1)
-             })
+                 ProcessUsage(pid: $0.0, name: "p\($0.0)", uid: 501, attribution: $0.1, bytes: 1, compressed: 0)
+             }, compressed: 0, compressionRatio: 1)
 }
 
 /// The tree as "pid(children…)" strings, in input order.
